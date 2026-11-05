@@ -1,0 +1,20 @@
+{
+  "name": "creatoradvance",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@10.30.0",
+  "scripts": {
+    "lint": "pnpm --filter @creatoradvance/mobile lint && pnpm --filter @creatoradvance/api lint",
+    "typecheck": "pnpm --filter @creatoradvance/mobile typecheck && pnpm --filter @creatoradvance/api typecheck",
+    "test": "pnpm --filter @creatoradvance/mobile test && pnpm --filter @creatoradvance/api test",
+    "build": "pnpm --filter @creatoradvance/mobile build && pnpm --filter @creatoradvance/api build"
+  },
+  "pnpm": {
+    "overrides": {
+      "@walletconnect/universal-provider": "2.26.0",
+      "react-dom": "19.3.0",
+      "valtio": "2.1.8",
+      "viem": "2.57.16"
+    }
+  }
+}

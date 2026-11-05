@@ -1,0 +1,195 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  CREATOR
+  BRAND_ADMIN
+  BRAND_SIGNER
+  INVESTOR
+  PLATFORM_ADMIN
+}
+
+enum BrandMemberRole {
+  BRAND_ADMIN
+  BRAND_SIGNER
+}
+
+enum BrandStatus {
+  PENDING
+  VERIFIED
+  ACTIVE
+  SUSPENDED
+  REJECTED
+}
+
+enum InvoiceStatus {
+  DRAFT
+  PENDING_BRAND
+  FINANCEABLE
+  FUNDED
+  REPAID
+  DEFAULTED
+  REJECTED
+  EXPIRED
+}
+
+enum OfferStatus {
+  ACTIVE
+  ACCEPTED
+  WITHDRAWN
+  EXPIRED
+}
+
+model User {
+  id             String          @id @default(cuid())
+  walletAddress  String          @unique @db.VarChar(42)
+  displayName    String?         @db.VarChar(120)
+  email          String?         @unique @db.VarChar(254)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  roles          UserRoleBinding[]
+  brandMemberships BrandMember[]
+  creatorProfile CreatorProfile?
+  sessions       Session[]
+}
+
+model UserRoleBinding {
+  userId    String
+  role      UserRole
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@id([userId, role])
+}
+
+model Brand {
+  id                   String       @id @default(cuid())
+  chainBrandId         String       @unique @db.Char(66)
+  legalName            String       @db.VarChar(180)
+  publicName           String       @db.VarChar(120)
+  website              String?      @db.VarChar(253)
+  countryCode          String       @db.Char(2)
+  registrationNumber   String?      @db.VarChar(120)
+  registrationObjectKey String?
+  contactEmail         String?      @db.VarChar(254)
+  walletAddress        String       @db.VarChar(42)
+  status               BrandStatus  @default(PENDING)
+  verifiedAt           DateTime?
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+  members              BrandMember[]
+  invoices             Invoice[]
+  invitations          Invitation[]
+  @@index([status, publicName])
+}
+
+model BrandMember {
+  brandId   String
+  userId    String
+  role      BrandMemberRole
+  createdAt DateTime @default(now())
+  brand     Brand    @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@id([brandId, userId])
+  @@index([userId, role])
+}
+
+model Invitation {
+  id          String   @id @default(cuid())
+  brandId     String
+  email       String   @db.VarChar(254)
+  tokenHash   String   @unique @db.Char(64)
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  createdById String
+  createdAt   DateTime @default(now())
+  brand       Brand    @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  @@index([brandId, email])
+}
+
+model CreatorProfile {
+  id           String   @id @default(cuid())
+  userId       String   @unique
+  handle       String?  @db.VarChar(80)
+  platform     String?  @db.VarChar(40)
+  countryCode  String?  @db.Char(2)
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Invoice {
+  id                    String        @id @default(cuid())
+  chainInvoiceId        String?       @unique @db.Char(66)
+  brandId               String
+  creatorId             String
+  invoiceNumberHash     String        @db.Char(66)
+  invoiceNumberCiphertext String?
+  faceValue             Decimal       @db.Decimal(30, 0)
+  currency               String        @default("USDT") @db.VarChar(12)
+  dueDate                DateTime
+  listingExpiry          DateTime
+  evidenceObjectKey      String
+  evidenceSha256         String        @db.Char(64)
+  deliverySha256         String        @db.Char(64)
+  campaignSha256         String        @db.Char(64)
+  status                 InvoiceStatus @default(DRAFT)
+  createdAt              DateTime      @default(now())
+  updatedAt              DateTime      @updatedAt
+  brand                  Brand         @relation(fields: [brandId], references: [id], onDelete: Restrict)
+  offers                 Offer[]
+  transactions           Transaction[]
+  @@unique([brandId, invoiceNumberHash])
+  @@index([brandId, status, createdAt])
+  @@index([creatorId, status, createdAt])
+}
+
+model Offer {
+  id             String      @id @default(cuid())
+  chainOfferId   String?     @unique @db.VarChar(80)
+  invoiceId      String
+  investorId     String
+  price           Decimal     @db.Decimal(30, 0)
+  expiresAt       DateTime
+  status          OfferStatus @default(ACTIVE)
+  createdAt       DateTime    @default(now())
+  invoice         Invoice     @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  @@index([invoiceId, status, price])
+  @@index([investorId, status, createdAt])
+}
+
+model Transaction {
+  id          String   @id @default(cuid())
+  invoiceId   String
+  chainId     Int
+  txHash      String   @unique @db.Char(66)
+  logIndex    Int?
+  eventName   String   @db.VarChar(64)
+  blockNumber BigInt
+  blockHash   String   @db.Char(66)
+  payload     Json
+  observedAt  DateTime @default(now())
+  finalizedAt DateTime?
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  @@index([invoiceId, blockNumber])
+}
+
+model AuthNonce {
+  walletAddress String   @id @db.VarChar(42)
+  nonceHash     String   @db.Char(64)
+  expiresAt     DateTime
+}
+
+model Session {
+  id          String   @id @default(cuid())
+  userId      String
+  tokenHash   String   @unique @db.Char(64)
+  expiresAt   DateTime
+  revokedAt   DateTime?
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId, expiresAt])
+}
