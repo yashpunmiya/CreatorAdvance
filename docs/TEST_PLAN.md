@@ -9,9 +9,9 @@ Last updated: 2026-11-06.
 - API/mobile lint and TypeScript checks pass.
 - `pnpm build` passes, including the Expo Android JS export and API TypeScript build. The output is a JS export, not a signed APK.
 - Prisma schema validation/client generation and migrations `0001_init` and `0002_brand_chain_events` pass.
-- Foundry formatting check and 7 Solidity tests pass.
+- Foundry formatting check and 8 Solidity tests pass; the repayment accounting fuzz test passes 1,000 runs.
 - Android `:app:assembleDebug` passed from the primary Windows workspace; updated APK installed on the connected phone. Expo Android export bundled successfully.
-- Latest full root verification: `pnpm typecheck`, `pnpm lint`, `pnpm test`, and `pnpm build` pass; PostgreSQL integration passes separately; Foundry 7 tests and `forge fmt --check` pass.
+- Latest full root verification: `pnpm typecheck`, `pnpm lint`, `pnpm test`, and `pnpm build` pass; PostgreSQL integration passes separately; Foundry 8 tests, 1,000 repayment fuzz runs, and `forge fmt --check` pass.
 - Brand onboarding now requires a registration number, contact email, and private PDF evidence. Platform admins can access the document through an authenticated endpoint; the mobile client caches and opens it with native preview/share fallback.
 - Root README, MIT license, architecture diagram, AI usage disclosure, Whitechain feedback, and timed demo outline are present. GitHub reports the repository is private; no release push has been made.
 - Current phone smoke check: restarted Expo with `--dev-client --localhost --clear`, restored USB reverse on 8081, relaunched the installed app, and observed the home screen. Screenshot: `docs/screenshots/android-home.png`.

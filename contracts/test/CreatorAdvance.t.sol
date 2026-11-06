@@ -267,6 +267,52 @@ contract CreatorAdvanceTest {
         require(advance.ownerOf(uint256(invoiceId)) == nextInvestor, "approved transfer succeeds");
     }
 
+    function testFuzzSplitRepaymentsPreserveAccounting(uint256 rawFirstPayment) public {
+        uint256 face = 1_000 * UNIT;
+        uint256 firstPayment = (rawFirstPayment % (face - 1)) + 1;
+        uint256 secondPayment = face - firstPayment;
+
+        vm.prank(creator);
+        advance.createInvoice(
+            brandId,
+            keccak256("invoice-001"),
+            face,
+            dueDate,
+            listingExpiry,
+            keccak256("pdf"),
+            keccak256("delivery"),
+            keccak256("campaign")
+        );
+        _confirmInvoice(face);
+
+        vm.prank(investor);
+        token.approve(address(advance), type(uint256).max);
+        vm.prank(investor);
+        uint256 offerId = advance.submitOffer(invoiceId, 970 * UNIT, listingExpiry);
+        vm.prank(creator);
+        advance.acceptOffer(invoiceId, offerId);
+
+        vm.prank(brandOwner);
+        advance.repay(invoiceId, firstPayment);
+        (,,,,,,, uint256 paidAfterFirst, uint256 outstandingAfterFirst,,,,,) = advance.invoices(invoiceId);
+        (,,, uint256 collateralAfterFirst, uint256 reservedAfterFirst) = advance.brands(brandId);
+        require(paidAfterFirst == firstPayment, "first gross repayment recorded");
+        require(outstandingAfterFirst == secondPayment, "remaining debt conserved");
+        require(collateralAfterFirst == face && reservedAfterFirst == face, "collateral remains reserved");
+
+        vm.prank(brandOwner);
+        advance.repay(invoiceId, secondPayment);
+        (,,,,,,, uint256 paidAtClose, uint256 outstandingAtClose,,,,,) = advance.invoices(invoiceId);
+        (,,, uint256 collateralAtClose, uint256 reservedAtClose) = advance.brands(brandId);
+
+        uint256 firstFee = (firstPayment * advance.feeBps()) / advance.BPS();
+        uint256 secondFee = (secondPayment * advance.feeBps()) / advance.BPS();
+        uint256 investorBeforeRepayment = 10_000 * UNIT - 970 * UNIT;
+        require(paidAtClose == face && outstandingAtClose == 0, "gross repayments sum to face value");
+        require(token.balanceOf(investor) == investorBeforeRepayment + face - firstFee - secondFee, "net paid once");
+        require(collateralAtClose == face && reservedAtClose == 0, "reservation released only at full repayment");
+    }
+
     function _confirmInvoice(uint256 face) private {
         uint256 nonce = advance.approvalNonce(brandId);
         uint64 deadline = uint64(block.timestamp + 1 days);

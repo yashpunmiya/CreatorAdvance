@@ -29,7 +29,7 @@ Milestone 4+: API chain-event synchronization/reorg reconciliation and mobile co
 - API Vitest: 26 passing tests; PostgreSQL integration test passes against isolated PostgreSQL 18. API typecheck, lint, and build pass.
 - Mobile Jest: 4 tests pass. Mobile/API lint and TypeScript checks pass; Expo Android export bundles 3,517 modules.
 - Prisma schema validation, client generation, and migrations `0001` and `0002` pass against the isolated PostgreSQL instance.
-- Foundry `forge fmt --check` and `forge test -vv`: 7 tests pass, including brand collateral isolation, escrow cancellation/refund, and blocked transfer to an ineligible investor.
+- Foundry `forge fmt --check` and `forge test -vv`: 8 tests pass. A new fuzz test passed 1,000 split-repayment cases covering debt totals, fee rounding, investor net payouts, and collateral reservation.
 - Android Gradle `assembleDebug` passes (428 tasks; 43 executed) and the latest APK installation completed. No app launch was performed during the latest install.
 
 ## Remaining P0
