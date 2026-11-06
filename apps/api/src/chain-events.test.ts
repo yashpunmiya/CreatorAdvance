@@ -14,6 +14,21 @@ describe("chain-derived lifecycle states", () => {
       .toEqual({ chainStatus: 5, status: "SUSPENDED" });
   });
 
+  it("freezes brand state after a default and honors a later admin status change", () => {
+    const verifiedAt = new Date("2026-11-06T00:00:00Z");
+    expect(deriveBrandChainState([
+      { eventName: "BrandRegistered", payload: {} },
+      { eventName: "BrandStatusChanged", payload: { status: "3" } },
+      { eventName: "DefaultProcessed", payload: {} },
+    ], verifiedAt)).toEqual({ chainStatus: 5, status: "SUSPENDED" });
+    expect(deriveBrandChainState([
+      { eventName: "BrandRegistered", payload: {} },
+      { eventName: "BrandStatusChanged", payload: { status: "3" } },
+      { eventName: "DefaultProcessed", payload: {} },
+      { eventName: "BrandStatusChanged", payload: { status: "3" } },
+    ], verifiedAt)).toEqual({ chainStatus: 3, status: "ACTIVE" });
+  });
+
   it("maps only confirmed contract events to financeable and settled invoice states", () => {
     const created = { eventName: "InvoiceCreated", payload: { invoiceId: `0x${"ab".repeat(32)}` } };
     const confirmed = { eventName: "InvoiceConfirmed", payload: {} };

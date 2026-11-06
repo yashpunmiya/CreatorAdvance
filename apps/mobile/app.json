@@ -9,7 +9,8 @@
     "userInterfaceStyle": "light",
     "plugins": [
       "expo-router",
-      "./plugins/withShortAndroidCmakeBuildDir"
+      "./plugins/withShortAndroidCmakeBuildDir",
+      "expo-sharing"
     ],
     "ios": {
       "supportsTablet": true

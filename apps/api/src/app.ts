@@ -6,12 +6,12 @@ import { SiweMessage } from "siwe";
 import { getAddress, isAddress, keccak256, toBytes, type Hash } from "viem";
 import type { PrismaClient } from "./generated/prisma/client.js";
 import { rebuildInvoiceOffers } from "./chain-offers.js";
+import { rebuildBrandState } from "./chain-state.js";
 import {
   configuredChainSync,
   approvalNonceAbi,
   decodeContractEvents,
   decodeInvoiceEvents,
-  deriveBrandChainState,
   deriveInvoiceChainState,
   deriveInvoiceId,
   getFinalizedReceipt,
@@ -204,12 +204,17 @@ export function createApp(
     return { profile };
   });
 
-  app.post<{ Body: { legalName?: string; publicName?: string; website?: string; countryCode?: string; registrationNumber?: string } }>("/brands", async (request, reply) => {
+  app.post<{ Body: {
+    legalName?: string; publicName?: string; website?: string; countryCode?: string; registrationNumber?: string;
+    contactEmail?: string; registrationDocumentBase64?: string;
+  } }>("/brands", async (request, reply) => {
     const user = await currentUser(request);
     if (!user) return reply.code(401).send({ error: "authentication_required" });
     const body = request.body ?? {};
     const legalName = typeof body.legalName === "string" ? body.legalName.trim() : "";
     const publicName = typeof body.publicName === "string" ? body.publicName.trim() : "";
+    const registrationNumber = typeof body.registrationNumber === "string" ? body.registrationNumber.trim() : "";
+    const contactEmail = typeof body.contactEmail === "string" ? body.contactEmail.trim() : "";
     const countryCode = typeof body.countryCode === "string" && /^[A-Z]{2}$/.test(body.countryCode)
       ? body.countryCode
       : null;
@@ -217,33 +222,51 @@ export function createApp(
       || publicName.length < 2 || publicName.length > 120
       || countryCode === null
       || (body.website !== undefined && (typeof body.website !== "string" || body.website.length > 253))
-      || (body.registrationNumber !== undefined && (typeof body.registrationNumber !== "string" || body.registrationNumber.length > 120))) {
+      || registrationNumber.length < 1 || registrationNumber.length > 120
+      || contactEmail.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail)
+      || typeof body.registrationDocumentBase64 !== "string"
+      || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(body.registrationDocumentBase64)) {
       return reply.code(400).send({ error: "invalid_brand_application" });
     }
     const website = body.website?.trim() || null;
-    const registrationNumber = body.registrationNumber?.trim() || null;
+    const registrationDocument = Buffer.from(body.registrationDocumentBase64, "base64");
+    if (registrationDocument.length < 8 || registrationDocument.length > 8 * 1024 * 1024
+      || registrationDocument.subarray(0, 5).toString() !== "%PDF-") {
+      return reply.code(400).send({ error: "invalid_brand_registration_document" });
+    }
     const businessProfileHash = brandBusinessProfileHash({ legalName, publicName, website, countryCode, registrationNumber });
     const chainBrandId = keccak256(toBytes(`creatoradvance-brand:${user.walletAddress}:${randomBytes(16).toString("hex")}`));
-    const brand = await prisma.$transaction(async (tx) => {
-      const created = await tx.brand.create({ data: {
-        chainBrandId,
-        legalName,
-        publicName,
-        website,
-        countryCode,
-        registrationNumber,
-        walletAddress: user.walletAddress,
-        status: "PENDING",
-      }, select: { id: true, chainBrandId: true, legalName: true, publicName: true, status: true } });
-      await tx.brandMember.create({ data: { brandId: created.id, userId: user.id, role: "BRAND_ADMIN" } });
-      await tx.userRoleBinding.upsert({
-        where: { userId_role: { userId: user.id, role: "BRAND_ADMIN" } },
-        create: { userId: user.id, role: "BRAND_ADMIN" },
-        update: {},
+    await mkdir(privateDocumentDir, { recursive: true });
+    const registrationObjectKey = `${randomBytes(24).toString("hex")}.pdf`;
+    const registrationPath = join(privateDocumentDir, registrationObjectKey);
+    await writeFile(registrationPath, registrationDocument, { flag: "wx", mode: 0o600 });
+    try {
+      const brand = await prisma.$transaction(async (tx) => {
+        const created = await tx.brand.create({ data: {
+          chainBrandId,
+          legalName,
+          publicName,
+          website,
+          countryCode,
+          registrationNumber,
+          contactEmail,
+          registrationObjectKey,
+          walletAddress: user.walletAddress,
+          status: "PENDING",
+        }, select: { id: true, chainBrandId: true, legalName: true, publicName: true, status: true } });
+        await tx.brandMember.create({ data: { brandId: created.id, userId: user.id, role: "BRAND_ADMIN" } });
+        await tx.userRoleBinding.upsert({
+          where: { userId_role: { userId: user.id, role: "BRAND_ADMIN" } },
+          create: { userId: user.id, role: "BRAND_ADMIN" },
+          update: {},
+        });
+        return created;
       });
-      return created;
-    });
-    return reply.code(201).send({ brand, businessProfileHash });
+      return reply.code(201).send({ brand, businessProfileHash });
+    } catch (error) {
+      await unlink(registrationPath).catch(() => undefined);
+      throw error;
+    }
   });
 
   app.get("/brand/applications", async (request, reply) => {
@@ -253,13 +276,50 @@ export function createApp(
       where: { userId: user.id },
       select: { role: true, brand: { select: {
         id: true, chainBrandId: true, legalName: true, publicName: true, website: true, countryCode: true,
-        registrationNumber: true, status: true, chainStatus: true, verifiedAt: true,
+        registrationNumber: true, contactEmail: true, status: true, chainStatus: true, verifiedAt: true,
       } } },
       orderBy: { createdAt: "desc" },
     });
     return { brands: memberships.map(({ role, brand }) => ({
       ...brand, role, businessProfileHash: brandBusinessProfileHash(brand),
     })) };
+  });
+
+  app.get("/admin/brands", async (request, reply) => {
+    const user = await currentUser(request);
+    if (!user) return reply.code(401).send({ error: "authentication_required" });
+    if (!user.roles.some((binding) => binding.role === "PLATFORM_ADMIN")) {
+      return reply.code(403).send({ error: "platform_admin_required" });
+    }
+    const brands = await prisma.brand.findMany({
+      select: {
+        id: true, chainBrandId: true, legalName: true, publicName: true, website: true, countryCode: true,
+        registrationNumber: true, walletAddress: true, status: true, chainStatus: true, verifiedAt: true,
+      },
+      orderBy: [{ status: "asc" }, { createdAt: "asc" }],
+      take: 100,
+    });
+    return { brands: brands.map((brand) => ({ ...brand, businessProfileHash: brandBusinessProfileHash(brand) })) };
+  });
+
+  app.get<{ Params: { brandId: string } }>("/admin/brands/:brandId/registration-evidence", async (request, reply) => {
+    const user = await currentUser(request);
+    if (!user) return reply.code(401).send({ error: "authentication_required" });
+    if (!user.roles.some((binding) => binding.role === "PLATFORM_ADMIN")) {
+      return reply.code(403).send({ error: "platform_admin_required" });
+    }
+    const brand = await prisma.brand.findUnique({
+      where: { id: request.params.brandId }, select: { registrationObjectKey: true },
+    });
+    const objectKey = brand?.registrationObjectKey;
+    if (!objectKey || !/^[a-f\d]{48}\.pdf$/i.test(objectKey)) return reply.code(404).send({ error: "brand_registration_evidence_not_found" });
+    try {
+      const document = await readFile(join(privateDocumentDir, objectKey));
+      return reply.type("application/pdf").header("Cache-Control", "private, no-store")
+        .header("Content-Disposition", "attachment; filename=business-registration.pdf").send(document);
+    } catch {
+      return reply.code(404).send({ error: "brand_registration_evidence_not_found" });
+    }
   });
 
   app.post<{ Params: { brandId: string } }>("/admin/brands/:brandId/verify", async (request, reply) => {
@@ -331,7 +391,11 @@ export function createApp(
       if ((chainStatus === 2 || chainStatus === 3) && !brand.verifiedAt) {
         return reply.code(409).send({ error: "offchain_brand_review_required" });
       }
-    } else {
+    } else if (event.eventName === "CollateralDeposited" || event.eventName === "CollateralWithdrawn") {
+      if (event.payload.owner?.toString().toLowerCase() !== brand.walletAddress.toLowerCase()) {
+        return reply.code(409).send({ error: "brand_collateral_owner_mismatch" });
+      }
+    } else if (event.eventName !== "AuthorizedSignerChanged") {
       return reply.code(409).send({ error: "unsupported_brand_event" });
     }
 
@@ -364,16 +428,7 @@ export function createApp(
           payload: event.payload, finalizedAt: new Date(),
         },
       });
-      const allEvents = await tx.transaction.findMany({
-        where: { brandId: brand.id },
-        orderBy: [{ blockNumber: "asc" }, { logIndex: "asc" }],
-        select: { eventName: true, payload: true },
-      });
-      const state = deriveBrandChainState(allEvents, brand.verifiedAt);
-      await tx.brand.update({
-        where: { id: brand.id },
-        data: { chainStatus: state.chainStatus, status: state.status },
-      });
+      await rebuildBrandState(tx, brand.id);
     });
     return { brandId: brand.id, chainBrandId: brand.chainBrandId, event: event.eventName, chainStatus: event.payload.status ?? "PENDING", finalized: true };
   });
@@ -406,7 +461,7 @@ export function createApp(
     if (evidence.length < 8 || evidence.length > 8 * 1024 * 1024 || evidence.subarray(0, 5).toString() !== "%PDF-") {
       return reply.code(400).send({ error: "invalid_pdf_evidence" });
     }
-    const brand = await prisma.brand.findUnique({ where: { id: body.brandId }, select: { id: true, status: true } });
+    const brand = await prisma.brand.findUnique({ where: { id: body.brandId }, select: { id: true, chainBrandId: true, status: true } });
     if (!brand || brand.status !== "ACTIVE") return reply.code(409).send({ error: "brand_not_active_onchain" });
 
     await mkdir(privateDocumentDir, { recursive: true });
@@ -415,10 +470,11 @@ export function createApp(
     const evidenceSha256 = sha256(evidence);
     await writeFile(documentPath, evidence, { flag: "wx", mode: 0o600 });
     try {
+      const invoiceNumberHash = keccak256(toBytes(body.invoiceNumber.normalize("NFKC").trim().toLowerCase()));
       const invoice = await prisma.invoice.create({ data: {
         brandId: brand.id,
         creatorId: user.id,
-        invoiceNumberHash: keccak256(toBytes(body.invoiceNumber.normalize("NFKC").trim().toLowerCase())),
+        invoiceNumberHash,
         faceValue: body.faceValue,
         dueDate,
         listingExpiry,
@@ -428,7 +484,20 @@ export function createApp(
         campaignSha256: body.campaignSha256.toLowerCase(),
         status: "PENDING_BRAND",
       }, select: { id: true, brandId: true, faceValue: true, dueDate: true, listingExpiry: true, evidenceSha256: true, status: true } });
-      return reply.code(201).send({ invoice });
+      return reply.code(201).send({
+        invoice,
+        chain: {
+          brandId: brand.chainBrandId,
+          invoiceNumberHash,
+          invoiceId: deriveInvoiceId(brand.chainBrandId as `0x${string}`, invoiceNumberHash as `0x${string}`),
+          faceValue: invoice.faceValue.toString(),
+          dueDate: String(Math.floor(dueDate.getTime() / 1000)),
+          listingExpiry: String(Math.floor(listingExpiry.getTime() / 1000)),
+          pdfHash: `0x${evidenceSha256}`,
+          deliveryHash: `0x${body.deliverySha256.toLowerCase()}`,
+          campaignHash: `0x${body.campaignSha256.toLowerCase()}`,
+        },
+      });
     } catch (error) {
       await unlink(documentPath).catch(() => undefined);
       const code = typeof error === "object" && error !== null && "code" in error ? error.code : undefined;
@@ -468,6 +537,34 @@ export function createApp(
     return { invoices };
   });
 
+  app.get<{ Params: { invoiceId: string } }>("/creator/invoices/:invoiceId/onchain", async (request, reply) => {
+    const user = await currentUser(request);
+    if (!user) return reply.code(401).send({ error: "authentication_required" });
+    if (!user.roles.some((binding) => binding.role === "CREATOR")) return reply.code(403).send({ error: "creator_role_required" });
+    const invoice = await prisma.invoice.findUnique({
+      where: { id: request.params.invoiceId },
+      select: {
+        id: true, creatorId: true, invoiceNumberHash: true, faceValue: true, dueDate: true, listingExpiry: true,
+        evidenceSha256: true, deliverySha256: true, campaignSha256: true,
+        brand: { select: { chainBrandId: true } },
+      },
+    });
+    if (!invoice) return reply.code(404).send({ error: "invoice_not_found" });
+    if (invoice.creatorId !== user.id) return reply.code(403).send({ error: "invoice_access_denied" });
+    return {
+      id: invoice.id,
+      brandId: invoice.brand.chainBrandId,
+      invoiceNumberHash: invoice.invoiceNumberHash,
+      invoiceId: deriveInvoiceId(invoice.brand.chainBrandId as `0x${string}`, invoice.invoiceNumberHash as `0x${string}`),
+      faceValue: invoice.faceValue.toString(),
+      dueDate: String(Math.floor(invoice.dueDate.getTime() / 1000)),
+      listingExpiry: String(Math.floor(invoice.listingExpiry.getTime() / 1000)),
+      pdfHash: `0x${invoice.evidenceSha256}`,
+      deliveryHash: `0x${invoice.deliverySha256}`,
+      campaignHash: `0x${invoice.campaignSha256}`,
+    };
+  });
+
   app.get("/brand/invoices", async (request, reply) => {
     const user = await currentUser(request);
     if (!user) return reply.code(401).send({ error: "authentication_required" });
@@ -475,7 +572,7 @@ export function createApp(
     if (memberships.length === 0) return { invoices: [] };
     const invoices = await prisma.invoice.findMany({
       where: { brandId: { in: memberships.map((membership) => membership.brandId) } },
-      select: { id: true, brandId: true, creatorId: true, faceValue: true, dueDate: true, status: true, createdAt: true },
+      select: { id: true, brandId: true, creatorId: true, chainInvoiceId: true, faceValue: true, dueDate: true, listingExpiry: true, status: true, createdAt: true },
       orderBy: { createdAt: "desc" },
       take: 100,
     });
@@ -706,6 +803,7 @@ export function createApp(
         where: { id: invoice.id },
         data: { chainInvoiceId: state.chainInvoiceId, status: state.status },
       });
+      await rebuildBrandState(tx, invoice.brandId);
     });
     return { invoiceId: invoice.id, chainInvoiceId: expectedInvoiceId, event: event.eventName, finalized: true };
   });

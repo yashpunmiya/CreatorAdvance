@@ -1,6 +1,7 @@
 import type { PrismaClient } from "./generated/prisma/client.js";
 import { rebuildInvoiceOffers } from "./chain-offers.js";
-import { deriveBrandChainState, deriveInvoiceChainState, type ChainSyncConfig } from "./chain-events.js";
+import { deriveInvoiceChainState, type ChainSyncConfig } from "./chain-events.js";
+import { rebuildBrandState } from "./chain-state.js";
 
 export async function reconcileStoredChainEvents(prisma: PrismaClient, chainSync: ChainSyncConfig) {
   const storedEvents = await prisma.transaction.findMany({
@@ -27,8 +28,11 @@ export async function reconcileStoredChainEvents(prisma: PrismaClient, chainSync
   const invoiceIds = new Set(orphaned.flatMap((event) => event.invoiceId ? [event.invoiceId] : []));
   const brandIds = new Set(orphaned.flatMap((event) => event.brandId ? [event.brandId] : []));
   await prisma.$transaction(async (tx) => {
+    const affectedBrandIds = new Set(brandIds);
     await tx.transaction.deleteMany({ where: { id: { in: orphanedIds } } });
     for (const invoiceId of invoiceIds) {
+      const invoice = await tx.invoice.findUnique({ where: { id: invoiceId }, select: { brandId: true } });
+      if (invoice) affectedBrandIds.add(invoice.brandId);
       const events = await tx.transaction.findMany({
         where: { invoiceId },
         orderBy: [{ blockNumber: "asc" }, { logIndex: "asc" }],
@@ -38,17 +42,7 @@ export async function reconcileStoredChainEvents(prisma: PrismaClient, chainSync
       await rebuildInvoiceOffers(tx, invoiceId, events);
       await tx.invoice.update({ where: { id: invoiceId }, data: state });
     }
-    for (const brandId of brandIds) {
-      const events = await tx.transaction.findMany({
-        where: { brandId },
-        orderBy: [{ blockNumber: "asc" }, { logIndex: "asc" }],
-        select: { eventName: true, payload: true },
-      });
-      const brand = await tx.brand.findUnique({ where: { id: brandId }, select: { verifiedAt: true } });
-      if (!brand) continue;
-      const state = deriveBrandChainState(events, brand.verifiedAt);
-      await tx.brand.update({ where: { id: brandId }, data: state });
-    }
+    for (const brandId of affectedBrandIds) await rebuildBrandState(tx, brandId);
   });
   return { checked: storedEvents.length, removed: orphanedIds.length };
 }

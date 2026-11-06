@@ -15,7 +15,7 @@ const makePrisma = () => {
     indexedTransactions,
     brand: {
       findMany: vi.fn().mockResolvedValue([{ id: "brand-1", publicName: "Active Co" }]),
-      findUnique: vi.fn().mockResolvedValue({ id: "brand-1", status: "PENDING" }),
+      findUnique: vi.fn().mockResolvedValue({ id: "brand-1", chainBrandId: `0x${"ab".repeat(32)}`, status: "PENDING" }),
       create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => ({ id: "brand-2", ...data })),
       update: vi.fn(async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => ({ id: where.id, ...data })),
     },
@@ -194,16 +194,34 @@ describe("API public and wallet-auth routes", () => {
   it("creates pending brand applications owned by the signing wallet", async () => {
     const prisma = makePrisma();
     prisma.sessionLookup.mockResolvedValue({ user: { id: "user-1", walletAddress: "0xabc", roles: [] } });
+    const storage = await mkdtemp(join(tmpdir(), "creatoradvance-brand-private-"));
+    const previousDir = process.env.PRIVATE_DOCUMENT_DIR;
+    process.env.PRIVATE_DOCUMENT_DIR = storage;
     const app = createApp(prisma as never);
-    const response = await app.inject({
-      method: "POST", url: "/brands",
-      headers: { authorization: "Bearer " + "x".repeat(48) },
-      payload: { legalName: "Example Media Pvt Ltd", publicName: "Example Media", countryCode: "IN" },
-    });
-    expect(response.statusCode).toBe(201);
-    expect(response.json().brand).toMatchObject({ id: "brand-2", status: "PENDING", walletAddress: "0xabc" });
-    expect(prisma.brandMember.create).toHaveBeenCalledWith(expect.objectContaining({ data: { brandId: "brand-2", userId: "user-1", role: "BRAND_ADMIN" } }));
-    await app.close();
+    const document = Buffer.from("%PDF-1.4\nCompany registration proof");
+    try {
+      const response = await app.inject({
+        method: "POST", url: "/brands",
+        headers: { authorization: "Bearer " + "x".repeat(48) },
+        payload: {
+          legalName: "Example Media Pvt Ltd", publicName: "Example Media", countryCode: "IN",
+          registrationNumber: "REG-123", contactEmail: "finance@example.test",
+          registrationDocumentBase64: document.toString("base64"),
+        },
+      });
+      expect(response.statusCode).toBe(201);
+      expect(response.json().brand).toMatchObject({ id: "brand-2", status: "PENDING", walletAddress: "0xabc" });
+      const stored = prisma.brand.create.mock.calls[0]?.[0].data as Record<string, string>;
+      expect(stored.registrationObjectKey).toMatch(/^[a-f\d]{48}\.pdf$/);
+      expect(await readFile(join(storage, stored.registrationObjectKey))).toEqual(document);
+      expect(stored.contactEmail).toBe("finance@example.test");
+      expect(prisma.brandMember.create).toHaveBeenCalledWith(expect.objectContaining({ data: { brandId: "brand-2", userId: "user-1", role: "BRAND_ADMIN" } }));
+    } finally {
+      await app.close();
+      if (previousDir === undefined) delete process.env.PRIVATE_DOCUMENT_DIR;
+      else process.env.PRIVATE_DOCUMENT_DIR = previousDir;
+      await rm(storage, { recursive: true, force: true });
+    }
   });
 
   it("does not let a brand member verify brands as a platform admin", async () => {
@@ -265,7 +283,7 @@ describe("API public and wallet-auth routes", () => {
   it("stores creator PDF evidence outside public assets and persists only its random key and hash", async () => {
     const prisma = makePrisma();
     prisma.sessionLookup.mockResolvedValue({ user: { id: "creator-1", walletAddress: "0xabc", roles: [{ role: "CREATOR" }] } });
-    prisma.brand.findUnique.mockResolvedValue({ id: "brand-1", status: "ACTIVE" });
+    prisma.brand.findUnique.mockResolvedValue({ id: "brand-1", chainBrandId: `0x${"ab".repeat(32)}`, status: "ACTIVE" });
     prisma.invoice.create.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({ id: "invoice-1", ...data }));
     const storage = await mkdtemp(join(tmpdir(), "creatoradvance-private-"));
     const previousDir = process.env.PRIVATE_DOCUMENT_DIR;
@@ -284,6 +302,12 @@ describe("API public and wallet-auth routes", () => {
         },
       });
       expect(response.statusCode).toBe(201);
+      const chain = response.json().chain as { brandId: string; invoiceNumberHash: string; invoiceId: string; faceValue: string; pdfHash: string };
+      expect(chain.brandId).toBe(`0x${"ab".repeat(32)}`);
+      expect(chain.invoiceNumberHash).toMatch(/^0x[\da-f]{64}$/);
+      expect(chain.invoiceId).toBe(deriveInvoiceId(chain.brandId as `0x${string}`, chain.invoiceNumberHash as `0x${string}`));
+      expect(chain.faceValue).toBe("1250000000");
+      expect(chain.pdfHash).toMatch(/^0x[\da-f]{64}$/);
       const stored = prisma.invoice.create.mock.calls[0]?.[0].data as Record<string, string>;
       expect(stored.status).toBe("PENDING_BRAND");
       expect(stored.invoiceNumberCiphertext).toBeUndefined();
@@ -308,6 +332,48 @@ describe("API public and wallet-auth routes", () => {
     expect(creator.statusCode).toBe(403);
     expect(investor.statusCode).toBe(403);
     expect(prisma.invoice.findMany).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it("returns the onchain invoice payload only to its creator", async () => {
+    const prisma = makePrisma();
+    prisma.sessionLookup.mockResolvedValue({ user: { id: "creator-1", walletAddress: "0xabc", roles: [{ role: "CREATOR" }] } });
+    const chainBrandId = `0x${"ab".repeat(32)}`;
+    const invoiceNumberHash = `0x${"cd".repeat(32)}`;
+    prisma.invoice.findUnique.mockResolvedValue({
+      id: "invoice-1", creatorId: "creator-1", invoiceNumberHash, faceValue: 1250000n,
+      dueDate: new Date("2030-01-01T00:00:00.000Z"), listingExpiry: new Date("2029-01-01T00:00:00.000Z"),
+      evidenceSha256: "11".repeat(32), deliverySha256: "22".repeat(32), campaignSha256: "33".repeat(32),
+      brand: { chainBrandId },
+    });
+    const app = createApp(prisma as never);
+    const headers = { authorization: "Bearer " + "x".repeat(48) };
+    const response = await app.inject({ method: "GET", url: "/creator/invoices/invoice-1/onchain", headers });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      brandId: chainBrandId,
+      invoiceNumberHash,
+      invoiceId: deriveInvoiceId(chainBrandId as `0x${string}`, invoiceNumberHash as `0x${string}`),
+      faceValue: "1250000",
+      pdfHash: `0x${"11".repeat(32)}`,
+    });
+    prisma.sessionLookup.mockResolvedValue({ user: { id: "another-creator", walletAddress: "0xdef", roles: [{ role: "CREATOR" }] } });
+    const denied = await app.inject({ method: "GET", url: "/creator/invoices/invoice-1/onchain", headers });
+    expect(denied.statusCode).toBe(403);
+    await app.close();
+  });
+
+  it("restricts the platform brand queue to platform admins", async () => {
+    const prisma = makePrisma();
+    prisma.sessionLookup.mockResolvedValue({ user: { id: "user-1", walletAddress: "0xabc", roles: [] } });
+    const app = createApp(prisma as never);
+    const headers = { authorization: "Bearer " + "x".repeat(48) };
+    const denied = await app.inject({ method: "GET", url: "/admin/brands", headers });
+    expect(denied.statusCode).toBe(403);
+    prisma.sessionLookup.mockResolvedValue({ user: { id: "admin-1", walletAddress: "0xabc", roles: [{ role: "PLATFORM_ADMIN" }] } });
+    const allowed = await app.inject({ method: "GET", url: "/admin/brands", headers });
+    expect(allowed.statusCode).toBe(200);
+    expect(allowed.json().brands).toBeDefined();
     await app.close();
   });
 

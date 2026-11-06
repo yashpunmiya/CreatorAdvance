@@ -11,6 +11,23 @@ export const creatorAdvanceEvents = [
     { indexed: true, name: "brandId", type: "bytes32" },
     { indexed: false, name: "status", type: "uint8" },
   ] },
+  { type: "event", name: "AuthorizedSignerChanged", inputs: [
+    { indexed: true, name: "brandId", type: "bytes32" },
+    { indexed: true, name: "signer", type: "address" },
+    { indexed: false, name: "allowed", type: "bool" },
+  ] },
+  { type: "event", name: "CollateralDeposited", inputs: [
+    { indexed: true, name: "brandId", type: "bytes32" },
+    { indexed: true, name: "owner", type: "address" },
+    { indexed: false, name: "amount", type: "uint256" },
+    { indexed: false, name: "total", type: "uint256" },
+  ] },
+  { type: "event", name: "CollateralWithdrawn", inputs: [
+    { indexed: true, name: "brandId", type: "bytes32" },
+    { indexed: true, name: "owner", type: "address" },
+    { indexed: false, name: "amount", type: "uint256" },
+    { indexed: false, name: "remaining", type: "uint256" },
+  ] },
   { type: "event", name: "InvoiceCreated", inputs: [
     { indexed: true, name: "invoiceId", type: "bytes32" },
     { indexed: true, name: "brandId", type: "bytes32" },
@@ -244,7 +261,7 @@ export function deriveBrandChainState(events: readonly { eventName: string; payl
     if (event.eventName === "BrandRegistered") chainStatus = 1;
     else if (event.eventName === "BrandStatusChanged" && typeof payload.status === "string") {
       chainStatus = Number(payload.status);
-    }
+    } else if (event.eventName === "DefaultProcessed") chainStatus = 5;
   }
   const status: "PENDING" | "VERIFIED" | "ACTIVE" | "SUSPENDED" = chainStatus === 3 && verifiedAt !== null ? "ACTIVE"
     : chainStatus === 4 || chainStatus === 5 ? "SUSPENDED"
