@@ -9,7 +9,7 @@ Updated: 2026-11-06.
 3. **Database startup:** migrations 0001/0002 and integration pass against isolated PostgreSQL 18. `apps/api/.env` configures its local URL; start the cluster under `%LOCALAPPDATA%\CreatorAdvance\pg-integration` after machine restarts.
 4. **Deployment:** no contract address, testnet deployment, or verified source. Deploying needs explicit review and authorization.
 5. **Phone validation:** APK installed; wallet connection, SIWE signature, app switching, and chain transactions remain unperformed manual checks. ADB reverse ports 4000/8081 are configured.
-6. **Submission:** confirm the ETHGlobal dashboard cutoff, make the private repository public and push reviewed commits, record the demo, and complete sponsor requirements. A README, license, feedback note, AI disclosure, architecture diagram, and demo outline are prepared.
+6. **Submission:** deadline is confirmed as Saturday, Nov 7, 2026 at 09:00 IST. Make the private repository public and push reviewed commits, record the demo, and complete sponsor requirements. Review ETHGlobal's AI eligibility rule: AI may assist but must not create the entire project; clearly document human work. README, license, feedback note, AI disclosure, architecture diagram, and demo outline are prepared.
 
 ## Verified environment
 

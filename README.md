@@ -76,6 +76,7 @@ Run Solidity checks in WSL from `contracts/` with `~/.foundry/bin/forge fmt --ch
 - [Android screenshot](docs/screenshots/android-home.png) shows the installed wallet-connect screen; it is not evidence of an authenticated or financed session.
 - [Progress](PROGRESS.md), [blockers](docs/BLOCKERS.md), and [test plan](docs/TEST_PLAN.md) track verified work and gates.
 - The GitHub repository is currently private. No release push has been made and no explorer transaction links exist yet.
+- ETHGlobal confirms the submission cutoff is Saturday, November 7, 2026 at 09:00 IST. Its [submission rules](https://ethglobal.com/events/mumbai/info/details) require AI attribution and meaningful human involvement; review these rules before submission.
 
 ## Why settle on Whitechain
 

@@ -29,4 +29,4 @@ Checked: 2026-11-06 (Asia/Kolkata). No deployment transaction has been sent.
 
 - Deployment requires the user's explicit approval after reviewing the parameters above.
 - Sponsor USDT needs to be funded at the test wallet before financing can be exercised. Never fund it with mainnet assets.
-- The public ETHGlobal event page confirms the event runs November 5–7, 2026, but does not expose the authenticated submission cutoff. The November 7, 09:00 IST time in the project handout remains unconfirmed against the dashboard.
+- The [official ETHGlobal Mumbai submission information](https://ethglobal.com/events/mumbai/info/details) confirms the deadline is Saturday, November 7, 2026 at 09:00 IST. The page requires AI attribution and says AI should assist development rather than create the entire project; the team should review eligibility and make meaningful human contributions clear before submitting.

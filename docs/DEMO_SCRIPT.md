@@ -22,4 +22,5 @@
 - Use separate fictional brand, creator, investor, and admin wallets where feasible.
 - Do not claim a live default test from local Anvil time travel.
 - Include the contract address and at least one qualifying USDT explorer link in the public README.
-- Confirm the authenticated ETHGlobal submission cutoff before final upload.
+- Recheck the Hacker Dashboard before final upload; the public event information confirms Saturday, November 7, 2026 at 09:00 IST.
+- Record a desktop capture rather than a phone recording; keep the video between 2 and 4 minutes and use a human narration.

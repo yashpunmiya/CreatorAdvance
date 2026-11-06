@@ -27,7 +27,8 @@ Last updated: 2026-11-06.
 - Manually sign in with the connected wallet and exercise role flows on the physical device. Wallet choice/signature and transaction approvals have not been performed.
 - The API uses an isolated local PostgreSQL cluster configured in ignored `apps/api/.env`; it requires manual startup after a machine restart. No chain contract is configured.
 - Deployed/verified contracts, public repository readiness, and 2–4 minute demo submission.
-- ETHGlobal submission cutoff from the authenticated dashboard; the public prize page confirms qualification criteria but did not expose the cutoff.
+- ETHGlobal submission cutoff is confirmed by the official event information: Saturday, November 7, 2026 at 09:00 IST. Verify the Hacker Dashboard before submission.
+- Confirm eligibility under ETHGlobal's AI policy: attribution is required and AI must assist rather than create the entire project. The code history begins on Nov 6, 2026; include the user-authored specification and describe the developer's actual contributions accurately.
 - Verify the private registration PDF preview on Android after the latest native build.
 
 Never use Anvil time travel as proof of live network maturity/default behavior. Mainnet is out of scope.

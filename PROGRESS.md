@@ -38,7 +38,7 @@ Milestone 4+: API chain-event synchronization/reorg reconciliation and mobile co
 - Fund test wallet with sponsor USDT and use separate test wallets for brand, creator, investor, and platform administration.
 - Complete the physical-device wallet SIWE, app switching, transaction signatures, six-decimal USDT approvals, financing, NFT, repayment/default, restart/reconnect, and explorer-recipient checks.
 - Start the isolated local PostgreSQL cluster after machine restarts; the API `.env` already points to it.
-- Confirm the authenticated submission cutoff, publish the repository, record the demo, and add live verified contract/payment explorer links.
+- Publish the repository, record the demo, and add live verified contract/payment explorer links before the confirmed cutoff, Saturday, November 7, 2026 at 09:00 IST. Review AI eligibility and accurately describe meaningful human contributions.
 
 ## Current blockers
 
