@@ -13,6 +13,7 @@ Milestone 4+: Android dev build verified; API auth, role enrollment, brand appli
 - Fastify API supports Whitechain SIWE sessions, `/me`, public active-brand search, creator/investor self-enrollment, creator profile updates, pending brand applications, and allowlisted platform-admin brand activation.
 - Android CMake/Ninja path failure fixed with short pnpm/CMake paths and object-path hashing. Clean `:app:assembleDebug` passed; APK installed and home screen loaded on the connected Android phone.
 - Reopened the installed app on the connected phone after restarting Metro; home screen now loads. Screenshot saved under `docs/screenshots/android-home.png`. Wallet connection still needs a manual approval on the phone.
+- Reown/AppKit wallet chooser opens and lists installed providers; connection approval and a balance read remain manual.
 - Isolated Whitechain Sepolia wallet created. Public address: `0x93bcA2E3811331Fb6e1D39B14166dC065BFCDcA1`; key is Windows DPAPI encrypted outside the repo. Decryption/address match verified. Latest RPC balances: 2 WBT and 0 sponsor USDT.
 
 ## Automated verification

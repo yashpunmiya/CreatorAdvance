@@ -12,6 +12,7 @@ Last updated: 2026-11-06.
 - Foundry formatting check and 7 Solidity tests pass.
 - Android `:app:assembleDebug` passed from the primary Windows workspace; APK was installed and the app home screen observed on the connected phone in the preceding verified milestone.
 - Current phone smoke check: restarted Expo with `--dev-client --localhost --clear`, restored USB reverse on 8081, relaunched the installed app, and observed the home screen. Screenshot: `docs/screenshots/android-home.png`.
+- Opened the Reown/AppKit wallet chooser; MetaMask, Trust Wallet, Binance Wallet, SafePal, and other wallet options appeared. No wallet connection or transaction was approved.
 - The test wallet decrypts to the documented public address. Whitechain Sepolia chain ID is `0x752`; latest RPC balances are 2 WBT and 0 sponsor USDT.
 
 ## Not verified yet
