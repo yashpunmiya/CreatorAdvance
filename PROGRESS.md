@@ -22,7 +22,7 @@ Milestone 4+: API chain-event synchronization/reorg reconciliation and mobile co
 - Expo DocumentPicker, FileSystem and Sharing SDK 58 modules handle private invoice and registration PDFs. `.env.local` includes local-only API URL; it is ignored by Git.
 - Latest Android debug APK build succeeded and was installed on the connected Android device. ADB USB reverse is configured for ports 4000 and 8081. Device foreground wallet signing has not been manually performed.
 - Isolated Whitechain Sepolia wallet created. Public address: `0x93bcA2E3811331Fb6e1D39B14166dC065BFCDcA1`; key is Windows DPAPI encrypted outside the repo. Decryption/address match verified. Latest RPC balances: 2 WBT and 0 sponsor USDT.
-- Submission materials now include a root README with setup/current status, MIT license, architecture diagram, AI usage disclosure, Whitechain feedback, screenshot, and a timed demo outline. The demo is not recorded and the repository has not been published.
+- Submission materials now include a root README with setup/current status, MIT license, architecture diagram, AI usage disclosure, Whitechain feedback, screenshot, and a timed demo outline. The demo is not recorded; GitHub confirms the repository is private and no release push has been made.
 
 ## Automated verification
 
@@ -49,5 +49,5 @@ Milestone 4+: API chain-event synchronization/reorg reconciliation and mobile co
 
 ## Git and release
 
-- Latest verified commit before the current documentation update: `511dd6b docs: record Whitechain deployment preflight`; the later release-pack and local-environment changes are under final verification.
+- Latest verified local commit: `27b5f6e docs: prepare CreatorAdvance hackathon submission pack`. The repository is still private; no remote push was made.
 - Changes remain uncommitted; no remote push or public release has occurred.

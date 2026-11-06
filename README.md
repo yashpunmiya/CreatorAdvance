@@ -75,7 +75,7 @@ Run Solidity checks in WSL from `contracts/` with `~/.foundry/bin/forge fmt --ch
 - [AI usage disclosure](AI_USAGE.md) describes how AI assistance was used.
 - [Android screenshot](docs/screenshots/android-home.png) shows the installed wallet-connect screen; it is not evidence of an authenticated or financed session.
 - [Progress](PROGRESS.md), [blockers](docs/BLOCKERS.md), and [test plan](docs/TEST_PLAN.md) track verified work and gates.
-- The repository has not been confirmed public and has not been pushed for release. No explorer transaction links exist yet.
+- The GitHub repository is currently private. No release push has been made and no explorer transaction links exist yet.
 
 ## Why settle on Whitechain
 

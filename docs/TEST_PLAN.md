@@ -13,7 +13,7 @@ Last updated: 2026-11-06.
 - Android `:app:assembleDebug` passed from the primary Windows workspace; updated APK installed on the connected phone. Expo Android export bundled successfully.
 - Latest full root verification: `pnpm typecheck`, `pnpm lint`, `pnpm test`, and `pnpm build` pass; PostgreSQL integration passes separately; Foundry 7 tests and `forge fmt --check` pass.
 - Brand onboarding now requires a registration number, contact email, and private PDF evidence. Platform admins can access the document through an authenticated endpoint; the mobile client caches and opens it with native preview/share fallback.
-- Root README, MIT license, architecture diagram, AI usage disclosure, Whitechain feedback, and timed demo outline are present. Repository visibility and publishing are not confirmed.
+- Root README, MIT license, architecture diagram, AI usage disclosure, Whitechain feedback, and timed demo outline are present. GitHub reports the repository is private; no release push has been made.
 - Current phone smoke check: restarted Expo with `--dev-client --localhost --clear`, restored USB reverse on 8081, relaunched the installed app, and observed the home screen. Screenshot: `docs/screenshots/android-home.png`.
 - Opened the Reown/AppKit wallet chooser; MetaMask, Trust Wallet, Binance Wallet, SafePal, and other wallet options appeared. No wallet connection or transaction was approved.
 - The test wallet decrypts to the documented public address. Whitechain Sepolia chain ID is `0x752`; latest RPC balances are 2 WBT and 0 sponsor USDT.
