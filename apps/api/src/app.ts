@@ -3,12 +3,40 @@ import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import Fastify from "fastify";
 import { SiweMessage } from "siwe";
-import { getAddress, isAddress, keccak256, toBytes } from "viem";
+import { getAddress, isAddress, keccak256, toBytes, type Hash } from "viem";
 import type { PrismaClient } from "./generated/prisma/client.js";
+import { rebuildInvoiceOffers } from "./chain-offers.js";
+import {
+  configuredChainSync,
+  approvalNonceAbi,
+  decodeContractEvents,
+  decodeInvoiceEvents,
+  deriveBrandChainState,
+  deriveInvoiceChainState,
+  deriveInvoiceId,
+  getFinalizedReceipt,
+  type ChainSyncConfig,
+} from "./chain-events.js";
 
 const sha256 = (value: string | Uint8Array) => createHash("sha256").update(value).digest("hex");
 
-export function createApp(prisma: PrismaClient, appOrigin = "http://localhost:8081") {
+function brandBusinessProfileHash(profile: {
+  legalName: string; publicName: string; website: string | null; countryCode: string; registrationNumber: string | null;
+}) {
+  return keccak256(toBytes(JSON.stringify({
+    legalName: profile.legalName,
+    publicName: profile.publicName,
+    website: profile.website,
+    countryCode: profile.countryCode,
+    registrationNumber: profile.registrationNumber,
+  })));
+}
+
+export function createApp(
+  prisma: PrismaClient,
+  appOrigin = "http://localhost:8081",
+  chainSync: ChainSyncConfig | null = configuredChainSync(),
+) {
   const app = Fastify({ logger: false, bodyLimit: 12 * 1024 * 1024 });
   const origin = new URL(appOrigin);
   const privateDocumentDir = resolve(process.env.PRIVATE_DOCUMENT_DIR ?? ".private-documents");
@@ -188,18 +216,22 @@ export function createApp(prisma: PrismaClient, appOrigin = "http://localhost:80
     if (legalName.length < 2 || legalName.length > 180
       || publicName.length < 2 || publicName.length > 120
       || countryCode === null
-      || (body.website !== undefined && (typeof body.website !== "string" || body.website.length > 253))) {
+      || (body.website !== undefined && (typeof body.website !== "string" || body.website.length > 253))
+      || (body.registrationNumber !== undefined && (typeof body.registrationNumber !== "string" || body.registrationNumber.length > 120))) {
       return reply.code(400).send({ error: "invalid_brand_application" });
     }
+    const website = body.website?.trim() || null;
+    const registrationNumber = body.registrationNumber?.trim() || null;
+    const businessProfileHash = brandBusinessProfileHash({ legalName, publicName, website, countryCode, registrationNumber });
     const chainBrandId = keccak256(toBytes(`creatoradvance-brand:${user.walletAddress}:${randomBytes(16).toString("hex")}`));
     const brand = await prisma.$transaction(async (tx) => {
       const created = await tx.brand.create({ data: {
         chainBrandId,
         legalName,
         publicName,
-        website: body.website?.trim() || null,
+        website,
         countryCode,
-        registrationNumber: body.registrationNumber?.trim() || null,
+        registrationNumber,
         walletAddress: user.walletAddress,
         status: "PENDING",
       }, select: { id: true, chainBrandId: true, legalName: true, publicName: true, status: true } });
@@ -211,7 +243,23 @@ export function createApp(prisma: PrismaClient, appOrigin = "http://localhost:80
       });
       return created;
     });
-    return reply.code(201).send({ brand });
+    return reply.code(201).send({ brand, businessProfileHash });
+  });
+
+  app.get("/brand/applications", async (request, reply) => {
+    const user = await currentUser(request);
+    if (!user) return reply.code(401).send({ error: "authentication_required" });
+    const memberships = await prisma.brandMember.findMany({
+      where: { userId: user.id },
+      select: { role: true, brand: { select: {
+        id: true, chainBrandId: true, legalName: true, publicName: true, website: true, countryCode: true,
+        registrationNumber: true, status: true, chainStatus: true, verifiedAt: true,
+      } } },
+      orderBy: { createdAt: "desc" },
+    });
+    return { brands: memberships.map(({ role, brand }) => ({
+      ...brand, role, businessProfileHash: brandBusinessProfileHash(brand),
+    })) };
   });
 
   app.post<{ Params: { brandId: string } }>("/admin/brands/:brandId/verify", async (request, reply) => {
@@ -220,13 +268,114 @@ export function createApp(prisma: PrismaClient, appOrigin = "http://localhost:80
     if (!user.roles.some((binding) => binding.role === "PLATFORM_ADMIN")) {
       return reply.code(403).send({ error: "platform_admin_required" });
     }
+    const existing = await prisma.brand.findUnique({
+      where: { id: request.params.brandId }, select: { id: true, chainStatus: true },
+    });
+    if (!existing) return reply.code(404).send({ error: "brand_not_found" });
+    const reviewStatus = existing.chainStatus === 3 ? "ACTIVE"
+      : existing.chainStatus === 4 || existing.chainStatus === 5 ? "SUSPENDED"
+        : "VERIFIED";
     const brand = await prisma.brand.update({
       where: { id: request.params.brandId },
-      // Offchain review alone never marks a brand financeable. ACTIVE is reserved for indexed chain registration.
-      data: { status: "VERIFIED", verifiedAt: new Date() },
+      // Offchain review alone never activates a brand. Chain activation must also be observed.
+      data: { status: reviewStatus, verifiedAt: new Date() },
       select: { id: true, status: true, verifiedAt: true },
     });
     return { brand };
+  });
+
+  app.post<{ Params: { brandId: string }; Body: { transactionHash?: string } }>("/brands/:brandId/chain-sync", async (request, reply) => {
+    const user = await currentUser(request);
+    if (!user) return reply.code(401).send({ error: "authentication_required" });
+    if (!chainSync) return reply.code(503).send({ error: "chain_sync_not_configured" });
+    if (typeof request.body?.transactionHash !== "string" || !/^0x[\da-fA-F]{64}$/.test(request.body.transactionHash)) {
+      return reply.code(400).send({ error: "invalid_transaction_hash" });
+    }
+    const brand = await prisma.brand.findUnique({
+      where: { id: request.params.brandId },
+      select: {
+        id: true, chainBrandId: true, legalName: true, publicName: true, website: true, countryCode: true,
+        registrationNumber: true, walletAddress: true, chainStatus: true, status: true, verifiedAt: true,
+      },
+    });
+    if (!brand) return reply.code(404).send({ error: "brand_not_found" });
+    const membership = await prisma.brandMember.findUnique({
+      where: { brandId_userId: { brandId: brand.id, userId: user.id } }, select: { role: true },
+    });
+    const isPlatformAdmin = user.roles.some((binding) => binding.role === "PLATFORM_ADMIN");
+    if (!membership && !isPlatformAdmin) return reply.code(403).send({ error: "brand_membership_required" });
+
+    const txHash = request.body.transactionHash.toLowerCase() as Hash;
+    const verifiedReceipt = await getFinalizedReceipt(chainSync, txHash);
+    if (!verifiedReceipt.ok) {
+      const conflictReasons = new Set(["transaction_reverted", "not_final", "not_canonical"]);
+      const error = verifiedReceipt.reason === "transaction_reverted" ? "chain_transaction_reverted"
+        : verifiedReceipt.reason === "not_final" ? "chain_event_not_final"
+          : verifiedReceipt.reason === "not_canonical" ? "chain_receipt_not_canonical"
+            : verifiedReceipt.reason === "chain_id_mismatch" ? "chain_id_mismatch" : "chain_rpc_unavailable_or_transaction_missing";
+      return reply.code(conflictReasons.has(verifiedReceipt.reason) ? 409 : 503).send({ error });
+    }
+    const receiptEvents = decodeContractEvents(verifiedReceipt.receipt.logs, chainSync.contractAddress)
+      .filter((event) => event.brandId?.toLowerCase() === brand.chainBrandId.toLowerCase());
+    if (receiptEvents.length === 0) return reply.code(409).send({ error: "matching_brand_event_not_found" });
+    const event = receiptEvents[0];
+    if (event.eventName === "BrandRegistered") {
+      const expectedProfileHash = brandBusinessProfileHash(brand);
+      if (event.payload.owner?.toString().toLowerCase() !== brand.walletAddress.toLowerCase()
+        || event.payload.businessProfileHash?.toString().toLowerCase() !== expectedProfileHash.toLowerCase()) {
+        return reply.code(409).send({ error: "brand_registration_event_mismatch" });
+      }
+    } else if (event.eventName === "BrandStatusChanged") {
+      const chainStatus = Number(event.payload.status);
+      if (![2, 3, 4, 5].includes(chainStatus)) return reply.code(409).send({ error: "invalid_brand_chain_status" });
+      if ((chainStatus === 2 || chainStatus === 3) && !brand.verifiedAt) {
+        return reply.code(409).send({ error: "offchain_brand_review_required" });
+      }
+    } else {
+      return reply.code(409).send({ error: "unsupported_brand_event" });
+    }
+
+    const existingTransaction = await prisma.transaction.findUnique({ where: { txHash }, select: { brandId: true, invoiceId: true } });
+    if (existingTransaction && (existingTransaction.brandId !== brand.id || existingTransaction.invoiceId !== null)) {
+      return reply.code(409).send({ error: "transaction_already_linked" });
+    }
+    const receipt = verifiedReceipt.receipt;
+    await prisma.$transaction(async (tx) => {
+      const priorEvents = await tx.transaction.findMany({
+        where: { brandId: brand.id },
+        select: { id: true, blockNumber: true, blockHash: true },
+      });
+      for (const prior of priorEvents) {
+        const priorCanonical = await chainSync.reader.getBlock({ blockNumber: prior.blockNumber });
+        if (!priorCanonical.hash || priorCanonical.hash.toLowerCase() !== prior.blockHash.toLowerCase()) {
+          await tx.transaction.delete({ where: { id: prior.id } });
+        }
+      }
+      await tx.transaction.upsert({
+        where: { txHash },
+        create: {
+          invoiceId: null, brandId: brand.id, chainId: 1874, txHash, logIndex: event.logIndex,
+          eventName: event.eventName, blockNumber: receipt.blockNumber, blockHash: receipt.blockHash.toLowerCase(),
+          payload: event.payload, finalizedAt: new Date(),
+        },
+        update: {
+          invoiceId: null, brandId: brand.id, chainId: 1874, logIndex: event.logIndex,
+          eventName: event.eventName, blockNumber: receipt.blockNumber, blockHash: receipt.blockHash.toLowerCase(),
+          payload: event.payload, finalizedAt: new Date(),
+        },
+      });
+      const allEvents = await tx.transaction.findMany({
+        where: { brandId: brand.id },
+        orderBy: [{ blockNumber: "asc" }, { logIndex: "asc" }],
+        select: { eventName: true, payload: true },
+      });
+      const state = deriveBrandChainState(allEvents, brand.verifiedAt);
+      await tx.brand.update({
+        where: { id: brand.id },
+        data: { chainStatus: state.chainStatus, status: state.status },
+      });
+    });
+    return { brandId: brand.id, chainBrandId: brand.chainBrandId, event: event.eventName, chainStatus: event.payload.status ?? "PENDING", finalized: true };
   });
 
   app.post<{ Body: {
@@ -333,6 +482,77 @@ export function createApp(prisma: PrismaClient, appOrigin = "http://localhost:80
     return { invoices };
   });
 
+  app.get<{ Params: { invoiceId: string } }>("/brand/invoices/:invoiceId/approval", async (request, reply) => {
+    const user = await currentUser(request);
+    if (!user) return reply.code(401).send({ error: "authentication_required" });
+    if (!chainSync?.reader.readContract) return reply.code(503).send({ error: "chain_sync_not_configured" });
+    const invoice = await prisma.invoice.findUnique({
+      where: { id: request.params.invoiceId },
+      select: {
+        id: true, brandId: true, creatorId: true, chainInvoiceId: true, invoiceNumberHash: true,
+        faceValue: true, dueDate: true, listingExpiry: true, evidenceSha256: true,
+        deliverySha256: true, campaignSha256: true, status: true,
+        brand: { select: { chainBrandId: true } },
+      },
+    });
+    if (!invoice) return reply.code(404).send({ error: "invoice_not_found" });
+    const membership = await prisma.brandMember.findUnique({
+      where: { brandId_userId: { brandId: invoice.brandId, userId: user.id } }, select: { role: true },
+    });
+    const isPlatformAdmin = user.roles.some((binding) => binding.role === "PLATFORM_ADMIN");
+    if (!membership && !isPlatformAdmin) return reply.code(403).send({ error: "brand_membership_required" });
+    const expectedInvoiceId = deriveInvoiceId(invoice.brand.chainBrandId as `0x${string}`, invoice.invoiceNumberHash as `0x${string}`);
+    if (invoice.status !== "PENDING_BRAND" || invoice.chainInvoiceId?.toLowerCase() !== expectedInvoiceId.toLowerCase()) {
+      return reply.code(409).send({ error: "invoice_not_pending_onchain" });
+    }
+    const creator = await prisma.user.findUnique({ where: { id: invoice.creatorId }, select: { walletAddress: true } });
+    if (!creator) return reply.code(409).send({ error: "invoice_creator_not_found" });
+    let nonce: bigint;
+    try {
+      nonce = await chainSync.reader.readContract({
+        address: chainSync.contractAddress,
+        abi: approvalNonceAbi,
+        functionName: "approvalNonce",
+        args: [invoice.brand.chainBrandId as `0x${string}`],
+      });
+    } catch {
+      return reply.code(503).send({ error: "approval_nonce_unavailable" });
+    }
+    const deadline = BigInt(Math.floor(Date.now() / 1000) + 5 * 60);
+    return {
+      domain: { name: "CreatorAdvance", version: "1", chainId: 1874, verifyingContract: chainSync.contractAddress },
+      primaryType: "InvoiceApproval",
+      types: { InvoiceApproval: [
+        { name: "brandId", type: "bytes32" },
+        { name: "invoiceId", type: "bytes32" },
+        { name: "creator", type: "address" },
+        { name: "invoiceNumberHash", type: "bytes32" },
+        { name: "faceValue", type: "uint256" },
+        { name: "dueDate", type: "uint64" },
+        { name: "pdfHash", type: "bytes32" },
+        { name: "deliveryHash", type: "bytes32" },
+        { name: "campaignHash", type: "bytes32" },
+        { name: "listingExpiry", type: "uint64" },
+        { name: "nonce", type: "uint256" },
+        { name: "deadline", type: "uint64" },
+      ] },
+      message: {
+        brandId: invoice.brand.chainBrandId,
+        invoiceId: expectedInvoiceId,
+        creator: creator.walletAddress,
+        invoiceNumberHash: invoice.invoiceNumberHash,
+        faceValue: String(invoice.faceValue),
+        dueDate: String(Math.floor(invoice.dueDate.getTime() / 1000)),
+        pdfHash: `0x${invoice.evidenceSha256}`,
+        deliveryHash: `0x${invoice.deliverySha256}`,
+        campaignHash: `0x${invoice.campaignSha256}`,
+        listingExpiry: String(Math.floor(invoice.listingExpiry.getTime() / 1000)),
+        nonce: nonce.toString(),
+        deadline: deadline.toString(),
+      },
+    };
+  });
+
   app.get("/investor/invoices", async (request, reply) => {
     const user = await currentUser(request);
     if (!user) return reply.code(401).send({ error: "authentication_required" });
@@ -344,6 +564,150 @@ export function createApp(prisma: PrismaClient, appOrigin = "http://localhost:80
       take: 100,
     });
     return { invoices };
+  });
+
+  app.get("/investor/offers", async (request, reply) => {
+    const user = await currentUser(request);
+    if (!user) return reply.code(401).send({ error: "authentication_required" });
+    if (!user.roles.some((binding) => binding.role === "INVESTOR")) return reply.code(403).send({ error: "investor_role_required" });
+    const offers = await prisma.offer.findMany({
+      where: { investorId: user.id },
+      select: { id: true, chainOfferId: true, invoiceId: true, price: true, expiresAt: true, status: true, createdAt: true },
+      orderBy: { createdAt: "desc" },
+      take: 100,
+    });
+    return { offers };
+  });
+
+  app.get<{ Params: { invoiceId: string } }>("/creator/invoices/:invoiceId/offers", async (request, reply) => {
+    const user = await currentUser(request);
+    if (!user) return reply.code(401).send({ error: "authentication_required" });
+    if (!user.roles.some((binding) => binding.role === "CREATOR")) return reply.code(403).send({ error: "creator_role_required" });
+    const invoice = await prisma.invoice.findUnique({ where: { id: request.params.invoiceId }, select: { creatorId: true } });
+    if (!invoice) return reply.code(404).send({ error: "invoice_not_found" });
+    if (invoice.creatorId !== user.id) return reply.code(403).send({ error: "invoice_access_denied" });
+    const offers = await prisma.offer.findMany({
+      where: { invoiceId: request.params.invoiceId, status: "ACTIVE" },
+      select: { id: true, chainOfferId: true, investorId: true, price: true, expiresAt: true, status: true },
+      orderBy: { price: "desc" },
+      take: 100,
+    });
+    return { offers };
+  });
+
+  app.post<{ Params: { invoiceId: string }; Body: { transactionHash?: string } }>("/invoices/:invoiceId/chain-sync", async (request, reply) => {
+    const user = await currentUser(request);
+    if (!user) return reply.code(401).send({ error: "authentication_required" });
+    if (!chainSync) return reply.code(503).send({ error: "chain_sync_not_configured" });
+    const transactionHash = request.body?.transactionHash;
+    if (typeof transactionHash !== "string" || !/^0x[\da-fA-F]{64}$/.test(transactionHash)) {
+      return reply.code(400).send({ error: "invalid_transaction_hash" });
+    }
+    const invoice = await prisma.invoice.findUnique({
+      where: { id: request.params.invoiceId },
+      select: {
+        id: true, brandId: true, creatorId: true, chainInvoiceId: true, invoiceNumberHash: true, faceValue: true,
+        brand: { select: { chainBrandId: true } },
+      },
+    });
+    if (!invoice) return reply.code(404).send({ error: "invoice_not_found" });
+    const isCreator = invoice.creatorId === user.id;
+    const brandMember = await prisma.brandMember.findUnique({
+      where: { brandId_userId: { brandId: invoice.brandId, userId: user.id } }, select: { userId: true },
+    });
+    const isPlatformAdmin = user.roles.some((binding) => binding.role === "PLATFORM_ADMIN");
+    const isInvestor = user.roles.some((binding) => binding.role === "INVESTOR");
+    if (!isCreator && !brandMember && !isInvestor && !isPlatformAdmin) return reply.code(403).send({ error: "invoice_access_denied" });
+
+    const verifiedReceipt = await getFinalizedReceipt(chainSync, transactionHash as Hash);
+    if (!verifiedReceipt.ok) {
+      const conflictReasons = new Set(["transaction_reverted", "not_final", "not_canonical"]);
+      const error = verifiedReceipt.reason === "transaction_reverted" ? "chain_transaction_reverted"
+        : verifiedReceipt.reason === "not_final" ? "chain_event_not_final"
+          : verifiedReceipt.reason === "not_canonical" ? "chain_receipt_not_canonical"
+            : verifiedReceipt.reason === "chain_id_mismatch" ? "chain_id_mismatch" : "chain_rpc_unavailable_or_transaction_missing";
+      return reply.code(conflictReasons.has(verifiedReceipt.reason) ? 409 : 503).send({ error });
+    }
+    const receipt = verifiedReceipt.receipt;
+
+    const expectedInvoiceId = deriveInvoiceId(invoice.brand.chainBrandId as `0x${string}`, invoice.invoiceNumberHash as `0x${string}`);
+    const receiptEvents = decodeInvoiceEvents(receipt.logs, chainSync.contractAddress)
+      .filter((event) => event.invoiceId.toLowerCase() === expectedInvoiceId.toLowerCase());
+    if (receiptEvents.length === 0) return reply.code(409).send({ error: "matching_invoice_event_not_found" });
+    const event = receiptEvents[0];
+    if (event.eventName === "InvoiceCreated") {
+      if (!isCreator || event.payload.brandId?.toString().toLowerCase() !== invoice.brand.chainBrandId.toLowerCase()
+        || event.payload.creator?.toString().toLowerCase() !== user.walletAddress.toLowerCase()
+        || event.payload.faceValue?.toString() !== String(invoice.faceValue)) {
+        return reply.code(409).send({ error: "invoice_created_event_mismatch" });
+      }
+    } else if (!invoice.chainInvoiceId || invoice.chainInvoiceId.toLowerCase() !== expectedInvoiceId.toLowerCase()) {
+      return reply.code(409).send({ error: "invoice_chain_creation_not_synced" });
+    }
+    if (event.eventName === "InvoiceConfirmed" || event.eventName === "InvoiceRejected") {
+      if (!brandMember && !isPlatformAdmin) return reply.code(403).send({ error: "brand_member_required" });
+    }
+    if (event.eventName === "InvoiceCancelled" && !isCreator) return reply.code(403).send({ error: "creator_required" });
+    if (event.eventName === "InvoiceFunded") {
+      const eventInvestor = event.payload.investor?.toString().toLowerCase();
+      if (!isCreator && eventInvestor !== user.walletAddress.toLowerCase() && !isPlatformAdmin) {
+        return reply.code(403).send({ error: "invoice_party_required" });
+      }
+    }
+    if (event.eventName === "OfferSubmitted" || event.eventName === "OfferWithdrawn") {
+      const eventInvestor = event.payload.investor?.toString().toLowerCase();
+      if ((!isInvestor || eventInvestor !== user.walletAddress.toLowerCase()) && !isPlatformAdmin) {
+        return reply.code(403).send({ error: "investor_wallet_required" });
+      }
+    }
+    const knownEvents = new Set([
+      "InvoiceCreated", "InvoiceConfirmed", "InvoiceRejected", "InvoiceCancelled", "InvoiceExpired",
+      "InvoiceFunded", "OfferSubmitted", "OfferWithdrawn", "Repayment", "DefaultProcessed", "DefaultRecovery",
+    ]);
+    if (!knownEvents.has(event.eventName)) return reply.code(409).send({ error: "unsupported_invoice_event" });
+
+    const txHash = transactionHash.toLowerCase();
+    const existingTransaction = await prisma.transaction.findUnique({ where: { txHash }, select: { invoiceId: true } });
+    if (existingTransaction && existingTransaction.invoiceId !== invoice.id) {
+      return reply.code(409).send({ error: "transaction_already_linked" });
+    }
+    await prisma.$transaction(async (tx) => {
+      const priorEvents = await tx.transaction.findMany({
+        where: { invoiceId: invoice.id },
+        select: { id: true, blockNumber: true, blockHash: true },
+      });
+      for (const prior of priorEvents) {
+        const priorCanonical = await chainSync.reader.getBlock({ blockNumber: prior.blockNumber });
+        if (!priorCanonical.hash || priorCanonical.hash.toLowerCase() !== prior.blockHash.toLowerCase()) {
+          await tx.transaction.delete({ where: { id: prior.id } });
+        }
+      }
+      await tx.transaction.upsert({
+        where: { txHash },
+        create: {
+          invoiceId: invoice.id, chainId: 1874, txHash, logIndex: event.logIndex,
+          eventName: event.eventName, blockNumber: receipt.blockNumber, blockHash: receipt.blockHash.toLowerCase(),
+          payload: event.payload, finalizedAt: new Date(),
+        },
+        update: {
+          invoiceId: invoice.id, chainId: 1874, logIndex: event.logIndex,
+          eventName: event.eventName, blockNumber: receipt.blockNumber, blockHash: receipt.blockHash.toLowerCase(),
+          payload: event.payload, finalizedAt: new Date(),
+        },
+      });
+      const allEvents = await tx.transaction.findMany({
+        where: { invoiceId: invoice.id },
+        orderBy: [{ blockNumber: "asc" }, { logIndex: "asc" }],
+        select: { eventName: true, payload: true },
+      });
+      await rebuildInvoiceOffers(tx, invoice.id, allEvents);
+      const state = deriveInvoiceChainState(allEvents);
+      await tx.invoice.update({
+        where: { id: invoice.id },
+        data: { chainInvoiceId: state.chainInvoiceId, status: state.status },
+      });
+    });
+    return { invoiceId: invoice.id, chainInvoiceId: expectedInvoiceId, event: event.eventName, finalized: true };
   });
 
   return app;

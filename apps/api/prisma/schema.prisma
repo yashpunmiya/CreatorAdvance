@@ -78,12 +78,14 @@ model Brand {
   registrationObjectKey String?
   contactEmail         String?      @db.VarChar(254)
   walletAddress        String       @db.VarChar(42)
+  chainStatus          Int          @default(0)
   status               BrandStatus  @default(PENDING)
   verifiedAt           DateTime?
   createdAt            DateTime     @default(now())
   updatedAt            DateTime     @updatedAt
   members              BrandMember[]
   invoices             Invoice[]
+  chainTransactions    Transaction[]
   invitations          Invitation[]
   @@index([status, publicName])
 }
@@ -163,7 +165,8 @@ model Offer {
 
 model Transaction {
   id          String   @id @default(cuid())
-  invoiceId   String
+  invoiceId   String?
+  brandId     String?
   chainId     Int
   txHash      String   @unique @db.Char(66)
   logIndex    Int?
@@ -173,8 +176,10 @@ model Transaction {
   payload     Json
   observedAt  DateTime @default(now())
   finalizedAt DateTime?
-  invoice     Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  invoice     Invoice? @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  brand       Brand?   @relation(fields: [brandId], references: [id], onDelete: Restrict)
   @@index([invoiceId, blockNumber])
+  @@index([brandId, blockNumber])
 }
 
 model AuthNonce {
