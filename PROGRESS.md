@@ -18,10 +18,11 @@ Milestone 4+: API chain-event synchronization/reorg reconciliation and mobile co
 - Mobile supports SIWE wallet sign-in, creator/investor role enrollment, creator profile editing, searchable/selectable active brands, private PDF invoice intake, contract invoice creation, EIP-712 brand approval/rejection, offer/funding, allowlisting, brand registration/activation, collateral deposit, repayment, default settlement/recovery, and offer cancellation. Contract actions are disabled unless `EXPO_PUBLIC_CONTRACT_ADDRESS` is configured.
 - API now verifies finalized Whitechain receipts for brand/invoice/offer lifecycle events, validates brand/profile and invoice event payloads, reads EIP-712 approval data from the contract nonce, rebuilds offers from chain events, and reconciles stored events against canonical block hashes.
 - Backend also rebuilds brand status from its own chain events and canonical `DefaultProcessed` invoice events, including reorg rollback of collateral freezes.
-- Prisma migration `0002_brand_chain_events` is applied to the isolated PostgreSQL 18 database. The API is currently running against that temporary database on port 4000; it is not a durable development database.
+- Prisma migration `0002_brand_chain_events` is applied to the isolated PostgreSQL 18 database. `apps/api/.env` (ignored by Git) configures the local database URL, API origin, private document directory, and test wallet as local platform admin. API health returns `ok` on port 4000. PostgreSQL data lives under `%LOCALAPPDATA%\CreatorAdvance\pg-integration`; the cluster must be running for the API to start.
 - Expo DocumentPicker, FileSystem and Sharing SDK 58 modules handle private invoice and registration PDFs. `.env.local` includes local-only API URL; it is ignored by Git.
 - Latest Android debug APK build succeeded and was installed on the connected Android device. ADB USB reverse is configured for ports 4000 and 8081. Device foreground wallet signing has not been manually performed.
 - Isolated Whitechain Sepolia wallet created. Public address: `0x93bcA2E3811331Fb6e1D39B14166dC065BFCDcA1`; key is Windows DPAPI encrypted outside the repo. Decryption/address match verified. Latest RPC balances: 2 WBT and 0 sponsor USDT.
+- Submission materials now include a root README with setup/current status, MIT license, architecture diagram, AI usage disclosure, Whitechain feedback, screenshot, and a timed demo outline. The demo is not recorded and the repository has not been published.
 
 ## Automated verification
 
@@ -36,17 +37,17 @@ Milestone 4+: API chain-event synchronization/reorg reconciliation and mobile co
 - Approve and deploy CreatorAdvance to Whitechain Sepolia; configure the resulting address in the API and mobile local environments and verify source code.
 - Fund test wallet with sponsor USDT and use separate test wallets for brand, creator, investor, and platform administration.
 - Complete the physical-device wallet SIWE, app switching, transaction signatures, six-decimal USDT approvals, financing, NFT, repayment/default, restart/reconnect, and explorer-recipient checks.
-- Configure a persistent API PostgreSQL URL for normal development; current API runs on the isolated local PostgreSQL 18 cluster.
-- Confirm the submission deadline, publish the repository, record the demo, and finish submission artifacts.
+- Start the isolated local PostgreSQL cluster after machine restarts; the API `.env` already points to it.
+- Confirm the authenticated submission cutoff, publish the repository, record the demo, and add live verified contract/payment explorer links.
 
 ## Current blockers
 
 - Test wallet `0x93bcA2E3811331Fb6e1D39B14166dC065BFCDcA1` has 2 WBT but 0 sponsor USDT; live financing needs sponsor USDT.
-- No persistent PostgreSQL `DATABASE_URL`; API currently runs only against the temporary isolated database.
+- Local API startup depends on the PostgreSQL cluster under `%LOCALAPPDATA%\CreatorAdvance\pg-integration` being started after a machine restart.
 - No configured or deployed Whitechain contract address. No live chain transaction or end-to-end lifecycle has been performed.
 - Physical phone is available and APK installed, but wallet connection/signature/transaction approval has not been completed.
 
 ## Git and release
 
-- Latest verified commit: `1523d37 feat: wire mobile roles and canonical chain sync`; newer transaction-flow, evidence-upload and reorg work has passed checks but remains uncommitted.
+- Latest verified commit before the current documentation update: `511dd6b docs: record Whitechain deployment preflight`; the later release-pack and local-environment changes are under final verification.
 - Changes remain uncommitted; no remote push or public release has occurred.
