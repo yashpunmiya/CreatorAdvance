@@ -20,10 +20,10 @@ Milestone 4+: API chain-event synchronization/reorg reconciliation and mobile co
 - Mobile supports SIWE wallet sign-in, creator/investor role enrollment, creator profile editing, searchable/selectable active brands, private PDF invoice intake, contract invoice creation, EIP-712 brand approval/rejection, offer/funding, allowlisting, brand registration/activation, collateral deposit, repayment, default settlement/recovery, and offer cancellation. Contract actions are disabled unless `EXPO_PUBLIC_CONTRACT_ADDRESS` is configured.
 - API now verifies finalized Whitechain receipts for brand/invoice/offer lifecycle events, validates brand/profile and invoice event payloads, reads EIP-712 approval data from the contract nonce, rebuilds offers from chain events, and reconciles stored events against canonical block hashes.
 - Backend also rebuilds brand status from its own chain events and canonical `DefaultProcessed` invoice events, including reorg rollback of collateral freezes.
-- Prisma migration `0002_brand_chain_events` is applied to the isolated PostgreSQL 18 database. `apps/api/.env` (ignored by Git) configures the local database URL, API origin, private document directory, and test wallet as local platform admin. API health returns `ok` on port 4000. PostgreSQL data lives under `%LOCALAPPDATA%\CreatorAdvance\pg-integration`; the cluster must be running for the API to start.
+- Prisma migration `0002_brand_chain_events` is applied to the isolated PostgreSQL 18 database. `apps/api/.env` (ignored by Git) configures the local database URL, API origin, private document directory, and selected MetaMask address as platform admin. Restart the existing API process to apply this allowlist change. PostgreSQL data lives under `%LOCALAPPDATA%\CreatorAdvance\pg-integration`; the cluster must be running for the API to start.
 - Expo DocumentPicker, FileSystem and Sharing SDK 58 modules handle private invoice and registration PDFs. `.env.local` includes local-only API URL; it is ignored by Git.
 - Latest Android debug APK build succeeded and was installed on the connected Android device. ADB USB reverse is configured for ports 4000 and 8081. Device foreground wallet signing has not been manually performed.
-- An earlier local test wallet exists but is not authorized for this deployment. The user selected their connected MetaMask wallet exclusively. Its public address and balances are pending phone reconnection; no mainnet asset or wallet has been used for this deployment path.
+- An earlier local test wallet exists but is not authorized for this deployment. The selected MetaMask wallet `0xBFAbb5a94b91E6B32e81ea17b7CEE198cB67c02e` shows 100 sponsor USDT and 2 WBT on the Whitechain Sepolia RPC. Its restored transaction session reports chain ID 1, so the app blocks deployment pending a dapp-specific switch to chain 1874. No deployment transaction was sent.
 - Submission materials now include a root README with setup/current status, MIT license, architecture diagram, AI usage disclosure, Whitechain feedback, screenshot, and a timed demo outline. The demo is not recorded; GitHub confirms the repository is private and no release push has been made.
 
 ## Automated verification
@@ -44,12 +44,11 @@ Milestone 4+: API chain-event synchronization/reorg reconciliation and mobile co
 
 ## Current blockers
 
-- Android phone is disconnected, so the selected MetaMask address and its testnet WBT/USDT balances remain unverified. Live financing requires sponsor USDT.
+- The selected MetaMask wallet has sufficient testnet WBT for the simulated deployment and 100 sponsor USDT, but the dapp transaction session still reports chain ID 1. Live financing remains blocked until the connection is authorized on chain 1874.
 - Local API startup depends on the PostgreSQL cluster under `%LOCALAPPDATA%\CreatorAdvance\pg-integration` being started after a machine restart.
 - No configured or deployed Whitechain contract address. No live chain transaction or end-to-end lifecycle has been performed.
-- APK is installed, but phone currently disconnected. Wallet connection/signature/transaction approval has not been completed.
+- APK is installed and running on the connected phone. Wallet connection succeeds, but the chain mismatch prevents wallet signing. No deployment transaction has been submitted.
 
 ## Git and release
 
-- Latest verified local commit: `27b5f6e docs: prepare CreatorAdvance hackathon submission pack`. The repository is still private; no remote push was made.
-- Changes remain uncommitted; no remote push or public release has occurred.
+- Deployment preparation is committed locally; the signer-chain guard and latest device-state documentation are being validated in the working tree. The repository remains private; no remote push or public release has occurred.

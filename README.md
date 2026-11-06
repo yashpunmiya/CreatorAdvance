@@ -34,9 +34,9 @@ See [architecture](docs/ARCHITECTURE.md), [product specification](docs/PRODUCT_S
 | Explorer | `https://explorer.testnet.whitechain.io` |
 | Organizer USDT | `0xcedfB56113143d55b2358b8CFbB0dEB5Ad2f55a7` (6 decimals) |
 | CreatorAdvance contract | Not deployed; app contract address remains unset |
-| Intended deployment wallet | Connected MetaMask address; not yet read from the device |
+| Intended deployment wallet | User's connected MetaMask wallet; testnet balance read, transaction chain authorization still pending |
 
-The previously generated local test wallet is documented in [TEST_WALLET.md](docs/TEST_WALLET.md), but the user has instructed that the connected MetaMask wallet be used for the deployment. Its address and Sepolia balances still need to be confirmed after reconnecting the phone. Never use mainnet assets. Deployment runs only on chain ID 1874 with the exact sponsor USDT; the connected MetaMask wallet receives admin and fee-recipient roles and must approve the transaction. See [deployment preflight](docs/DEPLOYMENT_PREFLIGHT.md).
+The previously generated local test wallet is documented in [TEST_WALLET.md](docs/TEST_WALLET.md), but the user has instructed that the connected MetaMask wallet be used for the deployment. The app reads Sepolia balances, but the restored transaction connection reports chain 1 and must authorize chain 1874 before deployment. Never use mainnet assets. Deployment runs only on Whitechain Sepolia with the exact sponsor USDT; the connected MetaMask wallet receives admin and fee-recipient roles and must approve the transaction. See [deployment preflight](docs/DEPLOYMENT_PREFLIGHT.md).
 
 ## Local development
 

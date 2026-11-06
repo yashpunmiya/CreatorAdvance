@@ -7,7 +7,7 @@ Checked: 2026-11-06 (Asia/Kolkata). No deployment transaction has been sent.
 - Network: Whitechain Sepolia, chain ID `1874` (`0x752`), RPC `https://rpc.testnet.whitechain.io`.
 - Contract: `CreatorAdvance`, Solidity 0.8.30, optimizer (200 runs), `via_ir`, Prague EVM target.
 - Organizer USDT: `0xcedfB56113143d55b2358b8CFbB0dEB5Ad2f55a7`; RPC confirms deployed bytecode, symbol `USDT`, six decimals.
-- Deployment signer: the user's connected MetaMask wallet only. Its public address and Sepolia balances are pending reconnection and verification on the Android phone.
+- Deployment signer: the user's connected MetaMask wallet only: `0xBFAbb5a94b91E6B32e81ea17b7CEE198cB67c02e`. The app read 100 sponsor USDT and 2 WBT from Whitechain Sepolia.
 - Constructor: `(usdt, feeRecipient, admin)` = `(organizer USDT, connected MetaMask address, connected MetaMask address)`.
 - Deployment UI and Foundry script both enforce chain ID 1874 and the exact sponsor USDT. WalletConnect/MetaMask must approve the transaction. No mnemonic or private key is used in app code or shell commands.
 - The same test wallet receives fee-recipient and admin roles for this hackathon deployment. This is centralized and for testnet demonstration only.
@@ -17,7 +17,7 @@ Checked: 2026-11-06 (Asia/Kolkata). No deployment transaction has been sent.
 - RPC `eth_estimateGas` for compiled initcode and constructor args: `4,256,291` gas at sampled `5,001,000,000` wei, approximately `0.0213 WBT`.
 - Foundry simulation reported up to `5,488,104` gas at a conservative `10 gwei`, approximately `0.0549 WBT`. Gas prices vary; review MetaMask's actual fee before approval.
 - The Foundry script completed in simulation against chain 1874, confirming the USDT code and decimals. It was not broadcast. Neither estimate sent a transaction.
-- No user-wallet balance has been read yet because the Android device disconnected before connection. Do not infer that it can cover gas until verified in the app/RPC.
+- The app's transaction connector reports chain ID `1` while the app expects `1874`; no deployment was submitted. MetaMask must authorize Whitechain Sepolia for the CreatorAdvance connection before signing can proceed. The displayed Sepolia balances are read-only RPC results and do not prove that the wallet connection can sign on that chain.
 
 ## After the user-approved deployment
 

@@ -5,7 +5,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAppKit } from '@reown/appkit-react-native';
 import { useEffect, useState } from 'react';
 import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { useAccount, useBalance, useDeployContract, usePublicClient, useReadContract, useSignMessage, useSignTypedData, useWriteContract } from 'wagmi';
+import { useAccount, useBalance, useDeployContract, usePublicClient, useReadContract, useSignMessage, useSignTypedData, useSwitchChain, useWriteContract } from 'wagmi';
 import { encodeDeployData, formatEther, isAddress, type Address, type Hash, type Hex } from 'viem';
 import { apiBaseUrl, apiRequest } from '../src/lib/api';
 import { erc20BalanceAbi, erc20DecimalsAbi, sponsorUsdt, whitechainSepolia } from '../src/lib/chain';
@@ -41,6 +41,7 @@ function Workspace() {
   const { address, isConnected, chainId } = useAccount();
   const { signMessageAsync } = useSignMessage();
   const { signTypedDataAsync } = useSignTypedData();
+  const { switchChainAsync } = useSwitchChain();
   const { writeContractAsync } = useWriteContract();
   const { deployContractAsync } = useDeployContract();
   const publicClient = usePublicClient({ chainId: whitechainSepolia.id });
@@ -122,6 +123,24 @@ function Workspace() {
   async function deployTestnetContract() {
     if (creatorAdvanceAddress || currentDeployedAddress) throw new Error('A CreatorAdvance address is already configured or deployed for this wallet.');
     if (!address || chainId !== whitechainSepolia.id) throw new Error('Connect the intended wallet on Whitechain Sepolia (chain ID 1874).');
+    const walletProvider = walletRuntime?.appKit.getProvider('eip155') as ({
+      setDefaultChain?: (chainId: string) => void;
+      request: (args: { method: string; params?: unknown[] }, chainId?: string) => Promise<unknown>;
+    } | null);
+    if (!walletProvider) throw new Error('Wallet provider is not available. No deployment was submitted.');
+    const targetCaipChain = `eip155:${whitechainSepolia.id}`;
+    walletProvider.setDefaultChain?.(targetCaipChain);
+    let walletChainHex = await walletProvider.request({ method: 'eth_chainId' }, targetCaipChain);
+    if (typeof walletChainHex === 'string' && Number.parseInt(walletChainHex, 16) !== whitechainSepolia.id) {
+      setMessage('Requesting MetaMask to switch this connection to Whitechain Sepolia. No mainnet transaction will be sent.');
+      await switchChainAsync({ chainId: whitechainSepolia.id });
+      walletProvider.setDefaultChain?.(targetCaipChain);
+      walletChainHex = await walletProvider.request({ method: 'eth_chainId' }, targetCaipChain);
+    }
+    const connectedWalletChainId = typeof walletChainHex === 'string' ? Number.parseInt(walletChainHex, 16) : undefined;
+    if (connectedWalletChainId !== whitechainSepolia.id) {
+      throw new Error(`MetaMask still reports chain ${connectedWalletChainId ?? 'unknown'} for this dapp. Set the CreatorAdvance connection to Whitechain Sepolia (1874), then reconnect. No deployment was submitted.`);
+    }
     if (!publicClient || await publicClient.getChainId() !== whitechainSepolia.id) throw new Error('RPC chain check failed. No deployment was submitted.');
     const tokenCode = await publicClient.getCode({ address: sponsorUsdt.address });
     const decimals = await publicClient.readContract({ address: sponsorUsdt.address, abi: erc20DecimalsAbi, functionName: 'decimals' });
