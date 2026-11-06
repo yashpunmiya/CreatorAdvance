@@ -2,3 +2,5 @@ packages:
   - "apps/*"
   - "packages/*"
   - "contracts"
+virtualStoreDir: C:/p
+virtualStoreDirMaxLength: 21

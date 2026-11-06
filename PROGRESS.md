@@ -4,48 +4,42 @@ Updated: 2026-11-06 (Asia/Kolkata)
 
 ## Current milestone
 
-Milestone 4: Contract core, mobile wallet read shell, API authentication/directory foundation. **Local verification passed; end-to-end and infrastructure gates remain open.**
+Milestone 4+: Android dev build verified; API auth, role enrollment, brand applications, admin review, private invoice evidence intake, and a PostgreSQL-backed API integration smoke test are implemented. The finance lifecycle is still incomplete.
 
 ## Completed locally
 
-- Researched official Whitechain, Expo, Reown, OpenZeppelin, Foundry, Prisma, Fastify, and SIWE documentation. Exact pins and tested integration boundaries are in `docs/DEPENDENCIES.md`.
-- Verified Whitechain Sepolia chain ID `0x752` and organizer USDT bytecode, symbol, and six decimals through the official RPC.
-- Built Expo Android wallet screen with neutral visual tokens, Reown/Wagmi wiring, Whitechain metadata, and exact decimal formatting.
-- Implemented `CreatorAdvance.sol`: independent brand records, business/signer status, collateral reservations, EIP-712 approval, approved investor offers, escrow, atomic funding, transfer restrictions, partial/full repayments, fees, default allocation, and recovery.
-- Added Foundry tests for typed approval/funding/repayment, default, partial repayment plus transfer, invoice namespace reuse after rejection, and unapproved investor rejection.
-- Added Fastify API, Prisma 7/PostgreSQL schema and generated initial migration, chain-bound SIWE nonce/session flow, `/me`, and public active-brand search.
-- Added root lint, typecheck, test, and build scripts for the mobile/API workspaces.
-- Created architecture, product, financial, security, dependencies, test-plan, blocker, decision, and brand-defer documents.
+- Whitechain Sepolia chain ID and sponsor USDT contract metadata verified: chain `0x752`, USDT six decimals.
+- Solidity contract core implements brand collateral, signer approvals, investor eligibility, offers, escrow, invoice ownership, repayment, default, and recovery.
+- Fastify API supports Whitechain SIWE sessions, `/me`, public active-brand search, creator/investor self-enrollment, creator profile updates, pending brand applications, and allowlisted platform-admin brand activation.
+- Android CMake/Ninja path failure fixed with short pnpm/CMake paths and object-path hashing. Clean `:app:assembleDebug` passed; APK installed and home screen loaded on the connected Android phone.
+- Isolated Whitechain Sepolia wallet created. Public address: `0x93bcA2E3811331Fb6e1D39B14166dC065BFCDcA1`; key is Windows DPAPI encrypted outside the repo. Decryption/address match verified. Latest RPC balances: 2 WBT and 0 sponsor USDT.
 
-## Latest automated results
+## Automated verification
 
-- `pnpm lint`: passed for Expo and API.
-- `pnpm typecheck`: passed for mobile and API.
-- `pnpm test`: passed; mobile 4 tests, API 4 tests.
-- `pnpm build`: passed; Android JavaScript export (7.9 MB bundle) and API TypeScript build.
-- `npx expo-doctor`: 20/20 checks passed.
-- Prisma schema validation/client generation: passed. SQL migration generated; not applied to a running database.
-- Foundry `forge fmt --check`, `forge test -vv`: passed; 5 tests.
-- Foundry `forge build --sizes`: runtime contract size 17,929 bytes. Linter warnings remain documented in `docs/SECURITY.md`.
-
-## Manual and testnet status
-
-- Expo prebuild succeeded. Gradle could not download its wrapper distribution, so no APK, emulator startup, or device test is available.
-- Reown app identifier is not configured; no actual wallet session or testnet transaction has been performed.
-- No funded Whitechain test wallet is available for balance, approval, transfer, or gas checks.
-- No contract deployment or explorer verification has occurred.
-- No PostgreSQL service is configured; API migration is not applied.
-- Public ETHGlobal pages did not confirm the user-provided Nov 7, 2026 09:00 IST cutoff; check the authenticated dashboard.
+- API Vitest: 13 passing tests; one PostgreSQL integration test passes against isolated PostgreSQL 18. API typecheck and lint pass.
+- Mobile Jest: 4 tests pass. Mobile/API lint, TypeScript checks, Expo Android JS export, and API build pass.
+- Prisma schema validation, client generation, and the initial migration pass against the isolated PostgreSQL instance.
+- Foundry `forge fmt --check` and `forge test -vv`: 7 tests pass, including brand collateral isolation, escrow cancellation/refund, and blocked transfer to an ineligible investor.
+- Clean Android Gradle build passed from the primary workspace. Android screen was manually observed.
 
 ## Remaining P0
 
-- Complete role/entity-scoped API writes, brand onboarding, invitations, private invoice storage, transaction indexing/reconciliation, and admin review.
-- Connect the mobile app to the API and actual contract lifecycle; implement creator, brand, and investor screens.
-- Restore Android Gradle distribution access, build and launch the development app, and test Reown on an emulator/device.
-- Obtain separate test wallet funding and complete organizer USDT checks before any deployment decision.
-- Expand contract tests to full isolation, collateral, offer, failure, timing, and invariant coverage; deploy/verify only after explicit approval.
-- Confirm deadline, publish repository, record demo, and submit sponsor feedback artifact.
+- Implement private invoice evidence upload/access, creator invoice submission, brand signer approval tied to confirmed onchain state, investor offer/acceptance flows, and transaction event indexing/reorg reconciliation.
+- Build creator, brand, investor, and administrator mobile screens and connect them to the API and contract lifecycle.
+- Configure a persistent API PostgreSQL URL for normal development; the migration and opt-in integration test were exercised on isolated local PostgreSQL 18.
+- Fund test wallet with test WBT and sponsor USDT; verify wallet session, balances, approval, funding, restricted NFT, repayment, and explorer receipts.
+- Add contract isolation, collateral, offer, transfer, token-failure, timing, and invariant tests.
+- Review and authorize any testnet deployment; verify deployed contracts and transaction hashes.
+- Confirm event deadline, publish the repository, record demo, and finish submission artifacts.
 
-## Git
+## Current blockers
 
-One verified local root commit: `feat: build CreatorAdvance testnet prototype foundations`. `origin` is configured, but nothing has been pushed.
+- Test wallet `0x93bcA2E3811331Fb6e1D39B14166dC065BFCDcA1` has 2 WBT but 0 sponsor USDT; the financing lifecycle needs USDT.
+- No PostgreSQL `DATABASE_URL` or applied migration.
+- No testnet contract deployment or transaction.
+- No end-to-end role workflow yet.
+
+## Git and release
+
+- Base commit: `797090e feat: build CreatorAdvance testnet prototype foundations`.
+- Changes remain uncommitted; no remote push or public release has occurred.

@@ -3,6 +3,7 @@ node_modules/
 .expo/
 dist/
 coverage/
+.private-documents/
 apps/api/src/generated/prisma/
 out/
 cache/

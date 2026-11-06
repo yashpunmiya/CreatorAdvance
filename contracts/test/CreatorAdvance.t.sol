@@ -110,6 +110,63 @@ contract CreatorAdvanceTest {
         vm.expectRevert(abi.encodeWithSelector(CreatorAdvance.InvestorNotAllowed.selector, outsider));
         vm.prank(outsider);
         advance.submitOffer(invoiceId, 90 * UNIT, listingExpiry);
+
+        vm.prank(investor);
+        token.approve(address(advance), type(uint256).max);
+        vm.prank(investor);
+        uint256 offerId = advance.submitOffer(invoiceId, 90 * UNIT, listingExpiry);
+        vm.prank(creator);
+        advance.acceptOffer(invoiceId, offerId);
+        vm.expectRevert(abi.encodeWithSelector(CreatorAdvance.InvestorNotAllowed.selector, outsider));
+        vm.prank(investor);
+        advance.transferFrom(investor, outsider, uint256(invoiceId));
+    }
+
+    function testBrandCollateralIsIsolatedAndOwnerScoped() public {
+        bytes32 secondBrand = keccak256("brand-b");
+        address secondOwner = address(0xBEEF);
+        token.mint(secondOwner, 500 * UNIT);
+        vm.prank(secondOwner);
+        advance.registerBrand(secondBrand, keccak256("second business"));
+        advance.setBrandStatus(secondBrand, CreatorAdvance.BrandStatus.Active);
+        vm.prank(secondOwner);
+        token.approve(address(advance), type(uint256).max);
+        vm.prank(secondOwner);
+        advance.depositCollateral(secondBrand, 300 * UNIT);
+
+        require(advance.availableCollateral(brandId) == 1_000 * UNIT, "brand A collateral unchanged");
+        require(advance.availableCollateral(secondBrand) == 300 * UNIT, "brand B owns separate collateral");
+        vm.expectRevert(abi.encodeWithSelector(CreatorAdvance.Unauthorized.selector));
+        vm.prank(brandOwner);
+        advance.withdrawCollateral(secondBrand, 1 * UNIT);
+        vm.prank(secondOwner);
+        advance.withdrawCollateral(secondBrand, 100 * UNIT);
+        require(advance.availableCollateral(secondBrand) == 200 * UNIT, "owner withdraws only own reserve");
+    }
+
+    function testInvestorCanCancelEscrowedOfferAndGetRefunded() public {
+        vm.prank(creator);
+        advance.createInvoice(
+            brandId,
+            keccak256("invoice-001"),
+            100 * UNIT,
+            dueDate,
+            listingExpiry,
+            keccak256("pdf"),
+            keccak256("delivery"),
+            keccak256("campaign")
+        );
+        _confirmInvoice(100 * UNIT);
+        vm.prank(investor);
+        token.approve(address(advance), type(uint256).max);
+        uint256 beforeOffer = token.balanceOf(investor);
+        vm.prank(investor);
+        uint256 offerId = advance.submitOffer(invoiceId, 90 * UNIT, listingExpiry);
+        vm.prank(investor);
+        advance.cancelOffer(offerId);
+        require(token.balanceOf(investor) == beforeOffer, "offer escrow refunded");
+        (,,,,,,,,,,,,, uint256 activeOffers) = advance.invoices(invoiceId);
+        require(activeOffers == 0, "active offer count decremented");
     }
 
     function testRejectedSubmissionReleasesInvoiceNumber() public {

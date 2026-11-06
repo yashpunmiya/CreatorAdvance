@@ -18,7 +18,7 @@
 
 - Candidate pins: Expo 58.0.23, React Native 0.88.1, React 19.3.0, Reown RN adapter packages 2.0.6, Wagmi 2.19.5, viem 2.57.16, TanStack Query 5.106.1.
 - npm registry peer metadata fits the documented React Native adapter requirements. Whitechain’s Wagmi 3.7.6 example is web-specific; it is not a package-level mobile conflict.
-- An Android development build and wallet session are still required before this integration is verified.
+- Android dev build and app home screen are verified. A connected Reown wallet session and wallet signing on device remain unverified.
 
 ## 2026-11-06 — Submission deadline
 
@@ -26,4 +26,9 @@
 
 ## 2026-11-06 — Git baseline
 
-- Repository has no commits and `main` tracks a missing `origin/main`; only `build.md` was present at inspection. Do not claim history or create a commit with fabricated provenance. Preserve `build.md` as user-provided input.
+- The repository baseline is commit `797090e`; `origin` points to `https://github.com/yashpunmiya/CreatorAdvance.git`. No commit/push was made during this work; preserve `build.md` as user-provided input.
+
+## 2026-11-06 — Whitechain prize qualification
+
+- ETHGlobal's public Mumbai prize page requires Whitechain Sepolia chain ID 1874, a real payment using the sponsor USDT contract `0xcedfB56113143d55b2358b8CFbB0dEB5Ad2f55a7`, verified contracts, a public repository, and a 2–4 minute demo for the Tokenize prize.
+- The public prize page did not display the submission cutoff; the authenticated Hacker Dashboard remains authoritative for the exact deadline.
