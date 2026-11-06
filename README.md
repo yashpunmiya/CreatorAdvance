@@ -34,9 +34,9 @@ See [architecture](docs/ARCHITECTURE.md), [product specification](docs/PRODUCT_S
 | Explorer | `https://explorer.testnet.whitechain.io` |
 | Organizer USDT | `0xcedfB56113143d55b2358b8CFbB0dEB5Ad2f55a7` (6 decimals) |
 | CreatorAdvance contract | Not deployed; app contract address remains unset |
-| Test wallet | `0x93bcA2E3811331Fb6e1D39B14166dC065BFCDcA1` |
+| Intended deployment wallet | Connected MetaMask address; not yet read from the device |
 
-The test wallet has 2 WBT for gas and currently 0 sponsor USDT. Its key is DPAPI encrypted outside this repository. Never send mainnet assets to it. The deployment requires explicit owner authorization; details and a read-only gas estimate are in [deployment preflight](docs/DEPLOYMENT_PREFLIGHT.md).
+The previously generated local test wallet is documented in [TEST_WALLET.md](docs/TEST_WALLET.md), but the user has instructed that the connected MetaMask wallet be used for the deployment. Its address and Sepolia balances still need to be confirmed after reconnecting the phone. Never use mainnet assets. Deployment runs only on chain ID 1874 with the exact sponsor USDT; the connected MetaMask wallet receives admin and fee-recipient roles and must approve the transaction. See [deployment preflight](docs/DEPLOYMENT_PREFLIGHT.md).
 
 ## Local development
 
@@ -47,6 +47,7 @@ Requirements: Node.js 22, pnpm 10, Java 17, Android SDK/ADB, PostgreSQL 18, and 
 3. Apply Prisma migrations with `pnpm --filter @creatoradvance/api db:migrate` and generate the client with `pnpm --filter @creatoradvance/api db:generate`.
 4. Run the API with `pnpm --filter @creatoradvance/api dev`.
 5. Build/install the Android development client with `pnpm --filter @creatoradvance/mobile android`; start Metro with `pnpm --filter @creatoradvance/mobile android:dev`.
+6. To prepare the testnet deploy screen, build contracts from `contracts/` with Foundry, then run `pnpm contracts:sync-mobile-artifact`. Connect MetaMask to Whitechain Sepolia in the app. The deploy screen refuses other chain IDs; review the token/role values and approve the deployment only in MetaMask.
 
 The mobile app uses an external wallet through Reown. Wallet connection, SIWE, and transaction confirmations require user approval on the phone. A debug APK built from this workspace is at `apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk` (local build artifact, not checked in).
 

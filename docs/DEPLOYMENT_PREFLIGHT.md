@@ -2,31 +2,34 @@
 
 Checked: 2026-11-06 (Asia/Kolkata). No deployment transaction has been sent.
 
-## Target
+## Target and safeguards
 
 - Network: Whitechain Sepolia, chain ID `1874` (`0x752`), RPC `https://rpc.testnet.whitechain.io`.
-- Contract: `CreatorAdvance`, built with Solidity 0.8.30, optimizer (200 runs), `via_ir`, Prague EVM target.
-- USDT: `0xcedfB56113143d55b2358b8CFbB0dEB5Ad2f55a7`; live RPC confirms deployed bytecode, `USDT`, six decimals.
-- Deployer: test wallet `0x93bcA2E3811331Fb6e1D39B14166dC065BFCDcA1`.
-- Constructor: `(usdt, feeRecipient, admin)` = `(0xcedfB56113143d55b2358b8CFbB0dEB5Ad2f55a7, 0x93bcA2E3811331Fb6e1D39B14166dC065BFCDcA1, 0x93bcA2E3811331Fb6e1D39B14166dC065BFCDcA1)`.
-- Admin roles granted at deployment: `DEFAULT_ADMIN_ROLE` (two-day transfer delay), `VERIFIER_ROLE`, `INVESTOR_ADMIN_ROLE`, and `PAUSER_ROLE`. Using one address for the hackathon test wallet is a centralization tradeoff; use only test funds and do not treat this as production governance.
+- Contract: `CreatorAdvance`, Solidity 0.8.30, optimizer (200 runs), `via_ir`, Prague EVM target.
+- Organizer USDT: `0xcedfB56113143d55b2358b8CFbB0dEB5Ad2f55a7`; RPC confirms deployed bytecode, symbol `USDT`, six decimals.
+- Deployment signer: the user's connected MetaMask wallet only. Its public address and Sepolia balances are pending reconnection and verification on the Android phone.
+- Constructor: `(usdt, feeRecipient, admin)` = `(organizer USDT, connected MetaMask address, connected MetaMask address)`.
+- Deployment UI and Foundry script both enforce chain ID 1874 and the exact sponsor USDT. WalletConnect/MetaMask must approve the transaction. No mnemonic or private key is used in app code or shell commands.
+- The same test wallet receives fee-recipient and admin roles for this hackathon deployment. This is centralized and for testnet demonstration only.
 
-## Estimate and wallet balances
+## Estimate and simulation
 
-- RPC `eth_estimateGas` for the compiled deployment initcode and constructor args: `4,256,291` gas.
-- Sampled gas price: `5,001,000,000` wei; estimated fee: `0.021285711291 WBT`. Gas price changes over time.
-- Current RPC balances: `2 WBT`, `0 USDT`. The wallet can cover this estimate, but sponsor USDT is required for the qualifying financing lifecycle.
-- No signing, broadcast, deployment, token approval, or transfer was performed for this estimate.
+- RPC `eth_estimateGas` for compiled initcode and constructor args: `4,256,291` gas at sampled `5,001,000,000` wei, approximately `0.0213 WBT`.
+- Foundry simulation reported up to `5,488,104` gas at a conservative `10 gwei`, approximately `0.0549 WBT`. Gas prices vary; review MetaMask's actual fee before approval.
+- The Foundry script completed in simulation against chain 1874, confirming the USDT code and decimals. It was not broadcast. Neither estimate sent a transaction.
+- No user-wallet balance has been read yet because the Android device disconnected before connection. Do not infer that it can cover gas until verified in the app/RPC.
 
-## After an approved deployment
+## After the user-approved deployment
 
-1. Save and verify the deployment transaction and contract address on Whitechain Sepolia.
-2. Verify source against the same compiler settings and constructor arguments.
-3. Set `EXPO_PUBLIC_CONTRACT_ADDRESS` for mobile and the matching API contract configuration; configure the intended `PLATFORM_ADMIN_WALLETS` and durable `DATABASE_URL`.
-4. Rebuild/reinstall the Android app, then test with test USDT and separately approved wallet signatures.
+1. Verify the transaction, deployed address, and constructor roles on Whitechain Sepolia explorer.
+2. Verify source using the same compiler settings and constructor arguments.
+3. Configure the deployed address in ignored mobile/API local environments; use the connected wallet address for the local platform admin if appropriate.
+4. Rebuild/reinstall the Android app and validate flows with sponsor test USDT and separately approved wallets where available.
+
+Never use mainnet assets or mainnet deployments for this hackathon flow.
 
 ## External gates
 
-- Deployment requires the user's explicit approval after reviewing the parameters above.
-- Sponsor USDT needs to be funded at the test wallet before financing can be exercised. Never fund it with mainnet assets.
-- The [official ETHGlobal Mumbai submission information](https://ethglobal.com/events/mumbai/info/details) confirms the deadline is Saturday, November 7, 2026 at 09:00 IST. The page requires AI attribution and says AI should assist development rather than create the entire project; the team should review eligibility and make meaningful human contributions clear before submitting.
+- Wallet connection and transaction approval must happen in MetaMask on the Android device.
+- Sponsor USDT is required to exercise the financing lifecycle; the connected wallet's current USDT balance is unverified.
+- The [official ETHGlobal Mumbai submission information](https://ethglobal.com/events/mumbai/info/details) confirms the deadline is Saturday, November 7, 2026 at 09:00 IST. AI attribution and meaningful human contributions must be represented accurately.

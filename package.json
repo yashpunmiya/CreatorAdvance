@@ -7,7 +7,8 @@
     "lint": "pnpm --filter @creatoradvance/mobile lint && pnpm --filter @creatoradvance/api lint",
     "typecheck": "pnpm --filter @creatoradvance/mobile typecheck && pnpm --filter @creatoradvance/api typecheck",
     "test": "pnpm --filter @creatoradvance/mobile test && pnpm --filter @creatoradvance/api test",
-    "build": "pnpm --filter @creatoradvance/mobile build && pnpm --filter @creatoradvance/api build"
+    "build": "pnpm --filter @creatoradvance/mobile build && pnpm --filter @creatoradvance/api build",
+    "contracts:sync-mobile-artifact": "node scripts/export-mobile-deployment-artifact.mjs"
   },
   "pnpm": {
     "overrides": {

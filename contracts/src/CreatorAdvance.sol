@@ -537,6 +537,8 @@ contract CreatorAdvance is ERC721, EIP712, AccessControlDefaultAdminRules, Pausa
     function _pullExact(address from, uint256 amount) private {
         uint256 beforeBalance = usdt.balanceOf(address(this));
         usdt.safeTransferFrom(from, address(this), amount);
+        // Reject fee-on-transfer/rebasing behavior; settlement accounting requires exact USDT units.
+        // forge-lint: disable-next-line(incorrect-strict-equality)
         if (usdt.balanceOf(address(this)) - beforeBalance != amount) revert InexactTokenTransfer();
     }
 

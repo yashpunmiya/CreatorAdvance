@@ -1,34 +1,29 @@
-# Security baseline
+# Security baseline and current review status
 
-## Assets and threats
+CreatorAdvance handles testnet USDT, offer escrow, brand collateral, claim ownership, and private invoice evidence. The contract and backend are prototypes; they have not received an independent audit. Never use mainnet or customer funds.
 
-Assets are deposited USDT, offer escrow, brand collateral reservations, claim ownership, private invoices/evidence, and privileged registry controls. Threats include duplicate financing, cross-brand authorization, signature replay/expiry, malicious token behavior, unauthorized transfer or payout, double counting of partial repayments, collateral withdrawal while encumbered, compromised signer/admin, privacy leakage, stale event indexing, and denial of service.
+## Contract controls
 
-## Onchain controls required before deployment
+- OpenZeppelin 5.6.1 ERC-721, SafeERC20, EIP-712, AccessControlDefaultAdminRules, Pausable, and ReentrancyGuard.
+- A two-day default-admin transfer delay. The constructor also gives its admin verifier, investor-admin, and pauser roles; this is intentionally convenient for a test deployment but concentrates power in one wallet.
+- EIP-712 signatures bind the brand, creator, invoice number, face value, due date, evidence hashes, listing expiry, nonce, chain, and contract.
+- Brand collateral is separately accounted and reserved per brand. Full face value is reserved before financing; the reservation is released after full repayment or default processing.
+- Offer USDT is escrowed; acceptance pays the creator and mints the claim in one transaction. Cancel/withdraw returns escrow to its original investor.
+- Only eligible investors can offer, accept a claim, or receive a claim through ERC-721 transfers.
+- Repayments follow current ownership and apply the bounded fee. Default is permissionlessly processed after maturity plus a seven-day grace period, applies available collateral, freezes the brand, and records any remaining shortfall.
+- Incoming token transfers are required to increase contract balance by exactly the requested amount. This deliberately rejects fee-on-transfer behavior; Foundry's equality lint is suppressed with an inline rationale.
 
-- Role separation, least privilege, two-step/delayed admin transfer where appropriate; no unrestricted long-term development key.
-- EIP-712 domain separation and signer checks in contract; bind every material invoice field and nonce/expiry.
-- Unique invoice identifier and one-time state transition; reject funding after expiry/cancel/default/previous funding.
-- SafeERC20; check token address and expected 6 decimals at deployment/setup. Do not assume permit, EIP-3009, or fee-free token semantics without live tests.
-- Effects before external interactions where compatible with atomic rollback; reentrancy guard around token transfers and callbacks.
-- Explicit collateral and escrow liabilities; withdrawals cannot consume another brand’s funds or reserved amounts.
-- Investor eligibility checked at offer creation, acceptance, mint, and every NFT transfer destination.
-- ERC-721 restriction in `_update`, including safe transfers; no alternate bypass path.
-- Permissionless late/default trigger after exact maturity + grace period. No claim of autonomous execution.
-- Pause emergency-sensitive operations without enabling confiscation of existing funds. Specify what remains callable while paused.
-- Explicit fee, payout, rounding, partial/default recovery, and event accounting; test invariant/fuzz cases.
+## Backend and document controls
 
-## Offchain controls
+- SIWE nonce and one-time consumption tie API sessions to wallet signatures; sessions expire after 24 hours and tokens are stored hashed.
+- Brand and invoice evidence PDFs are validated for type/size, stored under random generated object keys in a private filesystem directory, and served only through authenticated, role-restricted routes. They are not uploaded to a public bucket or placed onchain.
+- Chain sync checks Whitechain chain ID, contract event contents, confirmation depth, and canonical block hashes. Reconciliation removes events from reorged blocks and rebuilds local projections.
+- The local platform admin is controlled by `PLATFORM_ADMIN_WALLETS` in an ignored development `.env`; never use a customer wallet for that setting in a deployed environment.
 
-- Authenticated sessions tied to wallet signatures; server checks role and entity scope on each request.
-- Private object storage and short-lived access URLs for invoice evidence; store hashes in workflow records.
-- Admin approvals and suspensions are audited with actor, action, target, timestamp, reason, and resulting tx hash if onchain.
-- Indexer is not authoritative for writes; use chain reads/receipt confirmation and reconciliation.
+## Verification and remaining risks
 
-## Implemented controls and remaining review
-
-The current contract uses OpenZeppelin 5.6.1, delayed default-admin rules, role separation, EIP-712 signatures, nonce/deadline checks, SafeERC20, exact incoming token delta checks, reentrancy guards, collateral reservations, and `_update` investor gating. Local tests cover typed approval, approval namespace release, atomic funding, repayment, transfer after a partial repayment, investor rejection, and default collateral allocation.
-
-`forge build --sizes` reports 17,929 runtime bytes for `CreatorAdvance`, below the EVM 24,576-byte limit. Foundry lint warnings remain for timestamp comparisons, event ordering around guarded external token calls, a false positive on the investor eligibility event, and strict exact-transfer equality. `forge lint` is a static linter, not Slither. Slither is not installed. No independent audit, fuzz invariant suite, malicious-token suite, testnet deployment, or wallet-held transaction has run.
-
-The API has SIWE nonce/session primitives and a PostgreSQL schema. It does not yet enforce role/entity scope on business write routes because those routes do not exist. The migration has not been applied to PostgreSQL. Do not treat this code as production-ready or deploy it with real funds.
+- Foundry unit suite: 8 tests. Repayment fuzz test: 1,000 runs. No dedicated invariant handler, malicious-token suite, formal verification, or independent audit has been performed.
+- `forge lint --severity high --severity med` passes after documenting the intentional exact-transfer comparison. Low/info warnings remain for timestamp comparisons, post-interaction event emission under reentrancy guards, and an investor-eligibility event false positive; review them before production use.
+- Slither is not installed. `forge build --sizes` previously reported 17,929 runtime bytes, under the 24,576-byte EVM limit; re-check after contract changes.
+- No Whitechain deployment, source verification, live wallet signing, or sponsor-USDT lifecycle transaction has occurred. The contract's test token behavior, RPC readings, and local simulation do not prove production security.
+- Business verification, invoice authenticity, investor suitability, legal assignment, and offchain debt recovery remain trust assumptions.

@@ -1,14 +1,16 @@
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import * as DocumentPicker from 'expo-document-picker';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAppKit } from '@reown/appkit-react-native';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { useAccount, useBalance, usePublicClient, useReadContract, useSignMessage, useSignTypedData, useWriteContract } from 'wagmi';
-import { type Address, type Hash, type Hex } from 'viem';
+import { useAccount, useBalance, useDeployContract, usePublicClient, useReadContract, useSignMessage, useSignTypedData, useWriteContract } from 'wagmi';
+import { encodeDeployData, formatEther, isAddress, type Address, type Hash, type Hex } from 'viem';
 import { apiBaseUrl, apiRequest } from '../src/lib/api';
-import { erc20BalanceAbi, sponsorUsdt, whitechainSepolia } from '../src/lib/chain';
+import { erc20BalanceAbi, erc20DecimalsAbi, sponsorUsdt, whitechainSepolia } from '../src/lib/chain';
 import { creatorAdvanceAbi, creatorAdvanceAddress, erc20ApprovalAbi } from '../src/lib/contract';
+import { creatorAdvanceDeployAbi, creatorAdvanceDeploymentBytecode } from '../src/lib/creator-advance-deploy-artifact';
 import { formatToken } from '../src/lib/format-token';
 import { walletRuntime } from '../src/lib/wallet';
 import { colors, spacing } from '../src/theme';
@@ -40,6 +42,7 @@ function Workspace() {
   const { signMessageAsync } = useSignMessage();
   const { signTypedDataAsync } = useSignTypedData();
   const { writeContractAsync } = useWriteContract();
+  const { deployContractAsync } = useDeployContract();
   const publicClient = usePublicClient({ chainId: whitechainSepolia.id });
   const [token, setToken] = useState<string>();
   const [sessionAddress, setSessionAddress] = useState<string>();
@@ -49,6 +52,8 @@ function Workspace() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+  const [deployedAddress, setDeployedAddress] = useState<Address>();
+  const [deployedOwner, setDeployedOwner] = useState<string>();
   const [profileHandle, setProfileHandle] = useState('');
   const [profilePlatform, setProfilePlatform] = useState('');
   const [profileCountry, setProfileCountry] = useState('IN');
@@ -73,8 +78,23 @@ function Workspace() {
   const [repaymentAmount, setRepaymentAmount] = useState('');
   const [investorAddress, setInvestorAddress] = useState('');
   const sessionToken = address?.toLowerCase() === sessionAddress?.toLowerCase() ? token : undefined;
+  const currentDeployedAddress = address?.toLowerCase() === deployedOwner ? deployedAddress : undefined;
   const nativeBalance = useBalance({ address, chainId: whitechainSepolia.id, query: { enabled: Boolean(address) } });
   const tokenBalance = useReadContract({ address: sponsorUsdt.address, abi: erc20BalanceAbi, functionName: 'balanceOf', args: address ? [address] : undefined, chainId: whitechainSepolia.id, query: { enabled: Boolean(address && chainId === whitechainSepolia.id) } });
+
+  useEffect(() => {
+    let current = true;
+    if (address) {
+      const key = `creatoradvance:deployment:${whitechainSepolia.id}:${address.toLowerCase()}`;
+      void AsyncStorage.getItem(key).then((stored) => {
+        if (current && stored && isAddress(stored)) {
+          setDeployedAddress(stored);
+          setDeployedOwner(address.toLowerCase());
+        }
+      }).catch(() => undefined);
+    }
+    return () => { current = false; };
+  }, [address]);
 
   async function act(task: () => Promise<void>) {
     setBusy(true); setMessage('');
@@ -97,6 +117,33 @@ function Workspace() {
     }
     if (refresh) await refreshWorkspace();
     setMessage(`Transaction confirmed after 5 blocks: ${hash}`);
+  }
+
+  async function deployTestnetContract() {
+    if (creatorAdvanceAddress || currentDeployedAddress) throw new Error('A CreatorAdvance address is already configured or deployed for this wallet.');
+    if (!address || chainId !== whitechainSepolia.id) throw new Error('Connect the intended wallet on Whitechain Sepolia (chain ID 1874).');
+    if (!publicClient || await publicClient.getChainId() !== whitechainSepolia.id) throw new Error('RPC chain check failed. No deployment was submitted.');
+    const tokenCode = await publicClient.getCode({ address: sponsorUsdt.address });
+    const decimals = await publicClient.readContract({ address: sponsorUsdt.address, abi: erc20DecimalsAbi, functionName: 'decimals' });
+    if (!tokenCode || tokenCode === '0x' || decimals !== 6) throw new Error('Organizer USDT contract verification failed. No deployment was submitted.');
+    const args = [sponsorUsdt.address, address, address] as const;
+    const deploymentData = encodeDeployData({ abi: creatorAdvanceDeployAbi, bytecode: creatorAdvanceDeploymentBytecode, args });
+    const [gasEstimate, gasPrice] = await Promise.all([
+      publicClient.estimateGas({ account: address, data: deploymentData }),
+      publicClient.getGasPrice(),
+    ]);
+    const estimateWbt = formatEther(gasEstimate * gasPrice);
+    setMessage(`Deployment estimate ${gasEstimate.toString()} gas (~${estimateWbt} WBT). Review the exact network, token, fee recipient, and admin in MetaMask before approving.`);
+    const hash = await deployContractAsync({ abi: creatorAdvanceDeployAbi, bytecode: creatorAdvanceDeploymentBytecode, args, chainId: whitechainSepolia.id });
+    setMessage(`Deployment submitted on Whitechain Sepolia: ${hash}. Waiting for 5 confirmations…`);
+    const receipt = await publicClient.waitForTransactionReceipt({ hash, confirmations: 5, timeout: 240_000 });
+    if (receipt.status !== 'success' || !receipt.contractAddress) throw new Error(`Deployment was not confirmed successfully: ${hash}`);
+    const deployedCode = await publicClient.getCode({ address: receipt.contractAddress });
+    if (!deployedCode || deployedCode === '0x') throw new Error('Confirmed deployment has no bytecode at its contract address.');
+    await AsyncStorage.setItem(`creatoradvance:deployment:${whitechainSepolia.id}:${address.toLowerCase()}`, receipt.contractAddress);
+    setDeployedAddress(receipt.contractAddress);
+    setDeployedOwner(address.toLowerCase());
+    setMessage(`Verified testnet deployment at ${receipt.contractAddress} · tx ${hash}. Configure this address in the local API and app environments before using contract actions.`);
   }
 
   async function registerBrandOnchain(brand: Brand) {
@@ -362,6 +409,11 @@ function Workspace() {
       {isConnected && !token ? <Button title="Sign in securely" onPress={() => void act(signIn)} disabled={busy || chainId !== 1874} /> : null}
       {token ? <Text style={styles.muted}>Signed in as {address?.slice(0, 6)}…{address?.slice(-4)}</Text> : null}
       {isConnected && chainId === 1874 ? <><BalanceRow label="USDT" value={tokenBalance.data} decimals={6} loading={tokenBalance.isLoading} /><BalanceRow label="WBT · gas" value={nativeBalance.data?.value} decimals={18} loading={nativeBalance.isLoading} /></> : null}
+      {!creatorAdvanceAddress && !currentDeployedAddress ? <>
+        <Text style={styles.muted}>Testnet deployment only · Chain 1874 · Sponsor USDT {sponsorUsdt.address} · fee recipient and admin will be the connected wallet. The wallet pays deployment gas in WBT.</Text>
+        <Button title="Deploy CreatorAdvance · review in wallet" onPress={() => void act(deployTestnetContract)} disabled={busy || !isConnected || chainId !== whitechainSepolia.id} />
+      </> : null}
+      {currentDeployedAddress ? <Text selectable style={styles.rowText}>Deployed for this wallet: {currentDeployedAddress}</Text> : null}
     </View>
 
     {sessionToken ? <>

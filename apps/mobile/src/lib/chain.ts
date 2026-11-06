@@ -26,3 +26,7 @@ export const erc20BalanceAbi = [
     outputs: [{ name: '', type: 'uint256' }],
   },
 ] as const;
+
+export const erc20DecimalsAbi = [
+  { type: 'function', name: 'decimals', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'uint8' }] },
+] as const;
