@@ -4,7 +4,7 @@ Updated: 2026-11-07 (Asia/Kolkata)
 
 ## Current milestone
 
-Milestone 5: CreatorAdvance is deployed on Whitechain Sepolia and the invoice-to-funding lifecycle completed live with separate brand, creator, and investor wallets. The exact organizer-USDT payout and CAR claim mint are linked in the root README. The source still needs explorer verification; repayment/default and the demo recording remain incomplete. GitHub publication is being completed for submission.
+Milestone 5: CreatorAdvance is deployed on Whitechain Sepolia and the invoice-to-funding lifecycle completed live with separate brand, creator, and investor wallets. The exact organizer-USDT payout and CAR claim mint are linked in the root README. The GitHub repository is public. Explorer source verification, repayment/default validation, and the demo recording remain incomplete.
 
 ## Completed locally
 
@@ -47,7 +47,7 @@ Milestone 5: CreatorAdvance is deployed on Whitechain Sepolia and the invoice-to
 
 ## Git and release
 
-- Publish the reviewed submission changes to the public GitHub repository; keep generated local artifacts and ignored environment files out of the commit.
+- Public repository: https://github.com/yashpunmiya/CreatorAdvance. Submission update: commit `3afd370` (`Prepare CreatorAdvance Whitechain submission`). Generated local artifacts and ignored environment files were excluded.
 
 ## UI restructure — 2026-11-06
 

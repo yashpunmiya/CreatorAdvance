@@ -8,7 +8,7 @@ Updated: 2026-11-07.
 2. **Source verification:** publish verified source and constructor arguments on the Whitechain Sepolia explorer. Its API currently reports the deployed address as unverified.
 3. **Database startup:** migrations 0001/0002 and integration pass against isolated PostgreSQL 18. Start the cluster under `%LOCALAPPDATA%\CreatorAdvance\pg-integration` after machine restarts; restart the API to apply the current contract/admin environment.
 4. **Role separation:** the live invoice funding flow used distinct brand, creator, and investor wallets. Keep the deployment/admin wallet separate from those roles.
-5. **Submission:** publish the reviewed source and record the demo video. The GitHub repository is being made public for the Whitechain Tokenize track. Review AI eligibility and describe human contributions accurately.
+5. **Submission:** record the demo video. The [GitHub repository](https://github.com/yashpunmiya/CreatorAdvance) is public for the Whitechain Tokenize track. Review AI eligibility and describe human contributions accurately.
 
 ## Verified deployment
 
