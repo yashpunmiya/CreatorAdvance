@@ -1,6 +1,6 @@
 # CreatorAdvance architecture
 
-**Current state:** local Android app, Fastify API, PostgreSQL schema, and contract lifecycle are implemented. The Android debug build is installed on the test phone. No contract is deployed and no live sponsor-USDT financing has been executed.
+**Current state (2026-11-07):** the Android app, Fastify API, PostgreSQL schema, and contract lifecycle are implemented. CreatorAdvance is deployed on Whitechain Sepolia at `0x598c4fb5aeb0f2965782a73c40972ecb8056e7fa`. A live invoice-to-funding flow completed with organizer USDT; repayment/default remain untested, and the explorer still reports the source as unverified.
 
 ## Product boundary
 
@@ -33,8 +33,8 @@ There is no separate web admin application; platform review is currently availab
 
 - Business identity, invoice authenticity, investor suitability, legal assignment, and offchain recovery are not established by the chain.
 - PDFs remain private offchain; only evidence hashes and financial state belong onchain.
-- The contract admin can verify brands, manage investor eligibility, pause transfers, and update the fee recipient (subject to contract bounds). The current local demo maps a single test wallet to platform-admin status for development.
+- The contract admin can verify brands, manage investor eligibility, pause transfers, and update the fee recipient (subject to contract bounds). The live funding flow used separate brand, creator, and investor wallets; the deployment/admin wallet remains a distinct privileged role.
 - The local API uses an isolated PostgreSQL cluster and a private filesystem directory. The cluster must be started after a machine restart; durable hosted services are not configured.
-- The contract address is blank, deployment and source verification are pending explicit user approval, and the test wallet has no sponsor USDT.
+- The deployed contract source has not yet been verified through the Whitechain explorer. Source and constructor settings are documented in [deployment preflight](DEPLOYMENT_PREFLIGHT.md).
 - The wallet integration and Android build are verified locally, but wallet signing, app return flow, and live transaction approval still require a human on the connected phone.
 - See [deployment preflight](DEPLOYMENT_PREFLIGHT.md), [blockers](BLOCKERS.md), and [test plan](TEST_PLAN.md).

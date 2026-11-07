@@ -30,5 +30,6 @@ Verified: 2026-11-06 (Asia/Kolkata). This deployment used Whitechain Sepolia onl
 ## Remaining validation
 
 - Verify and publish the contract source on the Whitechain Sepolia explorer with the exact compiler settings and constructor arguments.
-- Test brand registration/activation, creator invoice approval, investor offer/funding, restricted claim ownership, repayment/default, and API event synchronization on the deployed address.
-- This is a hackathon testnet deployment. The same wallet has administrative and fee-recipient roles; use separate test wallets for lifecycle role testing where available.
+- Live invoice issuance, brand approval, investor offer, and creator funding completed with separate role wallets. The successful 4.8 organizer-USDT payout and CAR claim mint are recorded in the [README live-financing evidence](../README.md#live-financing-evidence).
+- Test repayment, maturity/default recovery, and any remaining API event/restart edge cases on the deployed address.
+- This is a hackathon testnet deployment. The deployment wallet has administrative and fee-recipient roles; keep those distinct from creator, brand, and investor wallets during demos.

@@ -1,14 +1,14 @@
 # Blockers and manual gates
 
-Updated: 2026-11-06.
+Updated: 2026-11-07.
 
 ## Current blockers
 
-1. **Live end-to-end lifecycle:** CreatorAdvance is deployed and verified on Whitechain Sepolia. Brand, creator, and investor transactions still need to be exercised against it.
-2. **Source verification:** publish verified source and constructor arguments on the Whitechain Sepolia explorer.
+1. **Remaining lifecycle coverage:** invoice issuance, brand approval, investor offer, and creator funding have completed live. Repayment, maturity/default recovery, and related event synchronization still need live validation.
+2. **Source verification:** publish verified source and constructor arguments on the Whitechain Sepolia explorer. Its API currently reports the deployed address as unverified.
 3. **Database startup:** migrations 0001/0002 and integration pass against isolated PostgreSQL 18. Start the cluster under `%LOCALAPPDATA%\CreatorAdvance\pg-integration` after machine restarts; restart the API to apply the current contract/admin environment.
-4. **Role separation:** selected MetaMask wallet has 100 sponsor USDT and 2 WBT and holds platform/deployment admin roles. Use separate test wallets for the brand, creator, and investor flows when available.
-5. **Submission:** deadline is Saturday, Nov 7, 2026 at 09:00 IST. The user chose to keep the GitHub repository private; do not make it public or push. Record the demo and complete sponsor requirements if possible. Review ETHGlobal's AI eligibility rule and describe human work accurately.
+4. **Role separation:** the live invoice funding flow used distinct brand, creator, and investor wallets. Keep the deployment/admin wallet separate from those roles.
+5. **Submission:** publish the reviewed source and record the demo video. The GitHub repository is being made public for the Whitechain Tokenize track. Review AI eligibility and describe human contributions accurately.
 
 ## Verified deployment
 
@@ -16,10 +16,12 @@ Updated: 2026-11-06.
 - Contract: `0x598c4fb5aeb0f2965782a73c40972ecb8056e7fa`.
 - Deployment transaction: `0x40bbda02613989298422d4517aa5987204549254e3806e8e1dc0490501f06384`; successful receipt, five confirmations, runtime code present.
 - Onchain token, fee-recipient, and admin role checks match the selected MetaMask wallet and sponsor USDT.
+- Live `submitOffer` escrow: [`0xe2f9e13345f0303bb11d18335280f3fca33a819a7ecbf44e23ffeb9b0975663c`](https://explorer.testnet.whitechain.io/tx/0xe2f9e13345f0303bb11d18335280f3fca33a819a7ecbf44e23ffeb9b0975663c), 4.8 organizer USDT.
+- Live `acceptOffer`: [`0xd5f2fec51f9f480f4d15f2e8b90126df15c29fa87b8f5650c973e5b118032d7d`](https://explorer.testnet.whitechain.io/tx/0xd5f2fec51f9f480f4d15f2e8b90126df15c29fa87b8f5650c973e5b118032d7d), successful 4.8 USDT payout to creator plus CAR claim mint to investor.
 - Ignored mobile/API environment files reference this deployment; the API must be restarted to load the updated values.
 
 ## Needed to complete live validation
 
 - Restart local API and Metro after environment changes; verify authenticated API access on the phone.
-- Verify contract source, then test brand registration/activation, invoice approval, offer/funding, restricted NFT ownership, repayment/default, and event receipt synchronization.
-- Record the demo and finish sponsor submission materials. The repository remains private per the user's instruction.
+- Verify contract source, then test repayment/default and event receipt synchronization.
+- Record the demo and finish sponsor submission materials.

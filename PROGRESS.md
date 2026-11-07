@@ -1,10 +1,10 @@
 # CreatorAdvance progress
 
-Updated: 2026-11-06 (Asia/Kolkata)
+Updated: 2026-11-07 (Asia/Kolkata)
 
 ## Current milestone
 
-Milestone 4+: CreatorAdvance is deployed and verified on Whitechain Sepolia. Mobile/API local configuration now points to the deployment and the selected MetaMask wallet. The full financing lifecycle still needs live brand/investor actions and additional-wallet tests.
+Milestone 5: CreatorAdvance is deployed on Whitechain Sepolia and the invoice-to-funding lifecycle completed live with separate brand, creator, and investor wallets. The exact organizer-USDT payout and CAR claim mint are linked in the root README. The source still needs explorer verification; repayment/default and the demo recording remain incomplete. GitHub publication is being completed for submission.
 
 ## Completed locally
 
@@ -26,7 +26,7 @@ Milestone 4+: CreatorAdvance is deployed and verified on Whitechain Sepolia. Mob
 - Expo DocumentPicker, FileSystem and Sharing SDK 58 modules handle private invoice and registration PDFs. `.env.local` includes local-only API URL; it is ignored by Git.
 - The Android app loaded the connected MetaMask wallet and displayed 100 sponsor USDT and 2 WBT from Whitechain Sepolia. The deployment transaction was submitted through the app and verified at the resulting contract address.
 - Local ignored mobile/API environment files now point to the deployed contract and selected MetaMask wallet. Restart the API after environment changes and reload Metro to apply the mobile contract address.
-- Submission materials now include a root README with setup/current status, MIT license, architecture diagram, AI usage disclosure, Whitechain feedback, screenshot, and a timed demo outline. The demo is not recorded; GitHub confirms the repository is private and no release push has been made.
+- Submission materials include setup/current status, architecture, AI usage disclosure, Whitechain feedback, screenshots, and the live financing receipts. The demo video is not recorded; source verification and repayment/default validation remain incomplete.
 
 ## Automated verification
 
@@ -36,23 +36,18 @@ Milestone 4+: CreatorAdvance is deployed and verified on Whitechain Sepolia. Mob
 - Foundry `forge fmt --check` and `forge test -vv`: 8 tests pass. A new fuzz test passed 1,000 split-repayment cases covering debt totals, fee rounding, investor net payouts, and collateral reservation.
 - Android Gradle `assembleDebug` passes (428 tasks; 43 executed) and the latest APK installation completed. No app launch was performed during the latest install.
 
-## Remaining P0
+## Current remaining work (2026-11-07)
 
-- Verify the deployed source on Whitechain Sepolia explorer using the same compiler settings and constructor arguments.
-- Exercise brand registration/activation, creator invoice approval, investor offer/funding, repayment/default, NFT ownership, and event indexing against the deployed contract. The selected wallet has 100 sponsor USDT; separate test wallets are still needed for role separation.
-- Complete the physical-device wallet SIWE, app switching, transaction signatures, six-decimal USDT approvals, financing, NFT, repayment/default, restart/reconnect, and explorer-recipient checks.
-- Start the isolated local PostgreSQL cluster after machine restarts; the API `.env` already points to it.
-- Keep the repository private per the user's instruction. Record the demo and add live verified contract/payment explorer links if deployment and sponsor USDT testing can be completed before Saturday, November 7, 2026 at 09:00 IST. Review AI eligibility and accurately describe meaningful human contributions.
-
-## Current blockers
-
-- Live financing tests still need brand, investor, and creator role sessions plus the complete transaction lifecycle.
-- Local API startup depends on the PostgreSQL cluster under `%LOCALAPPDATA%\CreatorAdvance\pg-integration` being started after a machine restart; restart the API to apply the current contract/admin environment.
-- Source verification, full phone lifecycle smoke test, and demo recording remain.
+- Whitechain Explorer reports the deployed CreatorAdvance source as unverified. Verify with the recorded compiler and constructor settings.
+- The live `createInvoice` → `confirmInvoice` → `submitOffer` → `acceptOffer` sequence completed. Acceptance paid 4.8 organizer USDT to the creator and minted the CAR claim to the investor. See the README explorer links.
+- Repayment, maturity/default recovery, and their live API state synchronization still need validation; do not imply those were demonstrated.
+- Verify contract source on the explorer, validate repayment/default, and record the demo video.
+- Local API startup depends on the PostgreSQL cluster under `%LOCALAPPDATA%\CreatorAdvance\pg-integration` after machine restarts; restart the API after environment changes.
+- Review AI eligibility and accurately describe meaningful human contributions.
 
 ## Git and release
 
-- Changes are committed locally. The repository remains private per the user's instruction; no remote push or public release has occurred.
+- Publish the reviewed submission changes to the public GitHub repository; keep generated local artifacts and ignored environment files out of the commit.
 
 ## UI restructure — 2026-11-06
 

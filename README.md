@@ -2,7 +2,7 @@
 
 **Get paid today for work you've already completed.** CreatorAdvance is an Android-first prototype for financing creator receivables with sponsor USDT on Whitechain Sepolia.
 
-> **Current status:** CreatorAdvance is deployed on Whitechain Sepolia and the deployment, bytecode, sponsor USDT address, and admin roles have been verified. The complete sponsor/investor financing lifecycle still needs a live end-to-end demo. Do not treat this prototype as legal, financial, or production software.
+> **Current status (2026-11-07):** CreatorAdvance is deployed on Whitechain Sepolia and the issuance-to-funding lifecycle completed with separate brand, creator, and investor wallets. The investor escrowed 4.8 organizer USDT; the creator's successful acceptance paid 4.8 USDT and minted the receivable claim to the investor. The contract source is not yet verified on the explorer. Repayment/default have not been exercised live. This is a testnet prototype, not legal, financial, or production software.
 
 ## What it does
 
@@ -33,11 +33,21 @@ See [architecture](docs/ARCHITECTURE.md), [product specification](docs/PRODUCT_S
 | RPC | `https://rpc.testnet.whitechain.io` |
 | Explorer | `https://explorer.testnet.whitechain.io` |
 | Organizer USDT | `0xcedfB56113143d55b2358b8CFbB0dEB5Ad2f55a7` (6 decimals) |
-| CreatorAdvance contract | `0x598c4fb5aeb0f2965782a73c40972ecb8056e7fa` (deployed and runtime code verified) |
-| Deployment transaction | `0x40bbda02613989298422d4517aa5987204549254e3806e8e1dc0490501f06384` (Whitechain Sepolia) |
+| CreatorAdvance contract | [`0x598c4fb5aeb0f2965782a73c40972ecb8056e7fa`](https://explorer.testnet.whitechain.io/address/0x598c4fb5aeb0f2965782a73c40972ecb8056e7fa) (deployed; source verification pending) |
+| Deployment transaction | [`0x40bbda02613989298422d4517aa5987204549254e3806e8e1dc0490501f06384`](https://explorer.testnet.whitechain.io/tx/0x40bbda02613989298422d4517aa5987204549254e3806e8e1dc0490501f06384) (Whitechain Sepolia) |
 | Deployment wallet | User's connected MetaMask wallet; admin and fee recipient |
 
 The previously generated local test wallet is documented in [TEST_WALLET.md](docs/TEST_WALLET.md), but it was not used. The connected MetaMask wallet deployed this contract on Whitechain Sepolia (chain 1874) and received the admin and fee-recipient roles. The mobile and API ignored environment files now point to the deployment. No mainnet transaction or asset was used. See the [deployment record](docs/DEPLOYMENT_PREFLIGHT.md).
+
+## Live financing evidence
+
+The invoice issuance-to-funding flow completed on Whitechain Sepolia with separate brand, creator, and investor wallets. The invoice face value was 5 USDT; the investor escrowed 4.8 organizer USDT (a 4% discount). The creator's acceptance transaction paid 4.8 organizer USDT to the creator and minted the CAR receivable claim to the investor atomically:
+
+- Invoice issued (`createInvoice`, 5 USDT face value): [explorer transaction](https://explorer.testnet.whitechain.io/tx/0x757eea0af8abba94e6886140e87dbf0bd549d4a001325f9d6de18eec5afe7bbc)
+- Brand approval (`confirmInvoice`): [explorer transaction](https://explorer.testnet.whitechain.io/tx/0x15cefb3be4b1fae9fcd42ede73df86f1b96f60880db5b3d901b65866c7164647)
+- Offer escrow (`submitOffer`, 4.8 USDT): [explorer transaction](https://explorer.testnet.whitechain.io/tx/0xe2f9e13345f0303bb11d18335280f3fca33a819a7ecbf44e23ffeb9b0975663c)
+- Funding and creator payment (`acceptOffer`, 4.8 USDT plus CAR claim mint): [explorer transaction](https://explorer.testnet.whitechain.io/tx/0xd5f2fec51f9f480f4d15f2e8b90126df15c29fa87b8f5650c973e5b118032d7d)
+- The payout token is the organizer USDT contract listed above, not a project-minted token. Repayment, maturity, and default recovery still need live testnet validation.
 
 ## Local development
 
@@ -72,12 +82,12 @@ Run Solidity checks in WSL from `contracts/` with `~/.foundry/bin/forge fmt --ch
 
 ## Demo and release readiness
 
-- [2–4 minute demo script](docs/DEMO_SCRIPT.md) is a plan, not a recording; live onchain steps remain pending deployment, test USDT funding, and wallet approvals.
-- [Whitechain feedback](WHITECHAIN_FEEDBACK.md) records observed tooling friction and open funding/deadline checks.
+- [2–4 minute demo script](docs/DEMO_SCRIPT.md) covers the completed issuance-to-funding flow; record the actual wallet sessions and explorer receipts.
+- [Whitechain feedback](WHITECHAIN_FEEDBACK.md) records the completed testnet settlement and remaining tooling friction.
 - [AI usage disclosure](AI_USAGE.md) describes how AI assistance was used.
 - [Android screenshot](docs/screenshots/android-home.png) shows the installed wallet-connect screen; it is not evidence of an authenticated or financed session.
 - [Progress](PROGRESS.md), [blockers](docs/BLOCKERS.md), and [test plan](docs/TEST_PLAN.md) track verified work and gates.
-- The GitHub repository is currently private. No release push has been made and no explorer transaction links exist yet.
+- This repository is published publicly for the Whitechain Tokenize submission.
 - ETHGlobal confirms the submission cutoff is Saturday, November 7, 2026 at 09:00 IST. Its [submission rules](https://ethglobal.com/events/mumbai/info/details) require AI attribution and meaningful human involvement; review these rules before submission.
 
 ## Why settle on Whitechain

@@ -2,9 +2,9 @@
 
 - Address: `0x93bcA2E3811331Fb6e1D39B14166dC065BFCDcA1`
 - Network: Whitechain Sepolia, chain ID `1874` (`0x752`)
-- Purpose: isolated test wallet for balance checks and explicitly approved testnet transactions.
-- Latest RPC balance check (2026-11-06): 2 WBT and 0 sponsor USDT. Gas funding is available; sponsor USDT is still needed for the qualifying financing flow.
+- Purpose: isolated test wallet for balance checks. It was not used for deployment or the demonstrated financing lifecycle.
+- The live financing lifecycle used separate brand, creator, and investor wallets and the organizer's USDT contract. See the transaction links in the root README.
 - The private key is encrypted with Windows DPAPI for the current Windows user and stored outside this repository at `%LOCALAPPDATA%\CreatorAdvance\whitechain-sepolia-wallet.dpapi`. The wallet address is stored next to it. No private key or seed phrase is in source control, app configuration, or chat.
 - Do not fund this address with mainnet assets. Do not use the wallet for real funds.
 
-After funding, verify the address and both token balances before any transaction. Contract deployment still needs explicit review and authorization.
+This wallet is not required to reproduce the documented deployment or financing transactions. Verify its current testnet balances before using it for any new transaction.
