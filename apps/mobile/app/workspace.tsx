@@ -36,6 +36,15 @@ type Offer = { id: string; chainOfferId: string; invoiceId?: string; price: stri
 type InvestorOffer = Offer & { invoiceId: string };
 type WorkspaceRole = 'CREATOR' | 'BRAND' | 'INVESTOR' | 'ADMIN' | 'SETUP';
 
+const invoiceConfirmedEvent = {
+  type: 'event', name: 'InvoiceConfirmed', anonymous: false,
+  inputs: [
+    { indexed: true, name: 'invoiceId', type: 'bytes32' },
+    { indexed: true, name: 'signer', type: 'address' },
+    { indexed: false, name: 'nonce', type: 'uint256' },
+  ],
+} as const;
+
 function workspaceRoleFor(account?: SessionUser): WorkspaceRole {
   if (!account) return 'SETUP';
   if (account.roles.some(binding => binding.role === 'PLATFORM_ADMIN')) return 'ADMIN';
@@ -464,20 +473,52 @@ function Workspace() {
   const refreshWorkspace = useCallback(async () => {
     if (!sessionToken || role === 'SETUP') return;
     const identity = workspaceIdentity.current;
+    const syncRecentInvoiceApprovals = async (items: Invoice[]) => {
+      if (!creatorAdvanceAddress || !publicClient) return items;
+      const pending = items.filter(invoice => invoice.status === 'PENDING_BRAND' && invoice.chainInvoiceId);
+      if (!pending.length) return items;
+      const latest = await publicClient.getBlockNumber();
+      const earliest = latest > 10_000n ? latest - 10_000n : 0n;
+      const ids = new Set(pending.map(invoice => invoice.chainInvoiceId!.toLowerCase()));
+      const hashes = new Map<string, Hash>();
+      for (let from = earliest; from <= latest; from += 2_000n) {
+        const to = from + 1_999n > latest ? latest : from + 1_999n;
+        const logs = await publicClient.getLogs({ address: creatorAdvanceAddress, event: invoiceConfirmedEvent, fromBlock: from, toBlock: to });
+        for (const log of logs) {
+          const id = log.args.invoiceId?.toLowerCase();
+          if (id && ids.has(id)) hashes.set(id, log.transactionHash);
+        }
+      }
+      let syncFailed = false;
+      const reconciled = await Promise.all(items.map(async invoice => {
+        const transactionHash = invoice.chainInvoiceId ? hashes.get(invoice.chainInvoiceId.toLowerCase()) : undefined;
+        if (!transactionHash) return invoice;
+        try {
+          await apiRequest(`/invoices/${invoice.id}/chain-sync`, sessionToken, {
+            method: 'POST', body: JSON.stringify({ transactionHash }),
+          });
+        } catch {
+          syncFailed = true;
+        }
+        return { ...invoice, status: 'FINANCEABLE' };
+      }));
+      if (syncFailed) setMessage('Invoice approval is confirmed on Whitechain. The server sync will retry on refresh.');
+      return reconciled;
+    };
     if (role === 'CREATOR') {
       const [brandResult, invoiceResult] = await Promise.all([
         apiRequest<{ brands: Brand[] }>(`/brands${brandSearch.trim() ? `?search=${encodeURIComponent(brandSearch.trim())}` : ''}`, sessionToken),
         apiRequest<{ invoices: Invoice[] }>('/creator/invoices', sessionToken),
       ]);
       if (identity !== workspaceIdentity.current) return;
-      setBrands(brandResult.brands); setInvoices(invoiceResult.invoices);
+      setBrands(brandResult.brands); setInvoices(await syncRecentInvoiceApprovals(invoiceResult.invoices));
     } else if (role === 'BRAND') {
       const [brandResult, invoiceResult] = await Promise.all([
         apiRequest<{ brands: Brand[] }>('/brand/applications', sessionToken),
         apiRequest<{ invoices: Invoice[] }>('/brand/invoices', sessionToken),
       ]);
       if (identity !== workspaceIdentity.current) return;
-      setBrands(brandResult.brands); setInvoices(invoiceResult.invoices);
+      setBrands(brandResult.brands); setInvoices(await syncRecentInvoiceApprovals(invoiceResult.invoices));
     } else if (role === 'INVESTOR') {
       const [invoiceResult, offerResult] = await Promise.all([
         apiRequest<{ invoices: Invoice[] }>('/investor/invoices', sessionToken),
@@ -490,7 +531,7 @@ function Workspace() {
       if (identity !== workspaceIdentity.current) return;
       setBrands(result.brands); setInvoices([]);
     }
-  }, [sessionToken, role, brandSearch]);
+  }, [sessionToken, role, brandSearch, publicClient]);
   useEffect(() => {
     if (!sessionToken) return;
     const timer = setTimeout(() => { setLoadingWorkspace(true); void refreshWorkspace().catch(error => setMessage(error instanceof Error ? error.message : 'Unable to load workspace.')).finally(() => setLoadingWorkspace(false)); }, 250);
