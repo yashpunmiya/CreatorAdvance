@@ -38,8 +38,8 @@ describe("rebuilding brand state from canonical events", () => {
       transaction: {
         findMany: vi.fn(async ({ where }: { where: { brandId?: string } }) => where.brandId ? [
           { eventName: "BrandRegistered", payload: {}, blockNumber: 10n, logIndex: 0 },
-          { eventName: "BrandStatusChanged", payload: { status: "3" }, blockNumber: 12n, logIndex: 0 },
-          { eventName: "BrandStatusChanged", payload: { status: "3" }, blockNumber: 30n, logIndex: 0 },
+          { eventName: "BrandStatusChanged", payload: { status: 3 }, blockNumber: 12n, logIndex: 0 },
+          { eventName: "BrandStatusChanged", payload: { status: 3 }, blockNumber: 30n, logIndex: 0 },
         ] : [{ eventName: "DefaultProcessed", payload: {}, blockNumber: 20n, logIndex: 0 }]),
       },
     };

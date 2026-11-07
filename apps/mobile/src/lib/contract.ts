@@ -11,7 +11,20 @@ export const erc20ApprovalAbi = [{
   outputs: [{ name: '', type: 'bool' }],
 }] as const;
 
+export const brandStateAbi = [{
+  type: 'function', name: 'brands', stateMutability: 'view',
+  inputs: [{ name: 'brandId', type: 'bytes32' }],
+  outputs: [
+    { name: 'owner', type: 'address' },
+    { name: 'businessProfileHash', type: 'bytes32' },
+    { name: 'status', type: 'uint8' },
+    { name: 'collateral', type: 'uint256' },
+    { name: 'reservedCollateral', type: 'uint256' },
+  ],
+}] as const;
+
 export const creatorAdvanceAbi = [
+  ...brandStateAbi,
   { type: 'function', name: 'registerBrand', stateMutability: 'nonpayable', inputs: [{ name: 'brandId', type: 'bytes32' }, { name: 'businessProfileHash', type: 'bytes32' }], outputs: [] },
   { type: 'function', name: 'setBrandStatus', stateMutability: 'nonpayable', inputs: [{ name: 'brandId', type: 'bytes32' }, { name: 'status', type: 'uint8' }], outputs: [] },
   { type: 'function', name: 'setAuthorizedSigner', stateMutability: 'nonpayable', inputs: [{ name: 'brandId', type: 'bytes32' }, { name: 'signer', type: 'address' }, { name: 'allowed', type: 'bool' }], outputs: [] },

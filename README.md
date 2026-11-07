@@ -2,7 +2,7 @@
 
 **Get paid today for work you've already completed.** CreatorAdvance is an Android-first prototype for financing creator receivables with sponsor USDT on Whitechain Sepolia.
 
-> **Current status:** The contract, API, and Android client are implemented and pass local verification. The contract is not deployed, no sponsor USDT lifecycle transaction has been sent, and the app is not yet ready for a live financing demo. Do not treat this prototype as legal, financial, or production software.
+> **Current status:** CreatorAdvance is deployed on Whitechain Sepolia and the deployment, bytecode, sponsor USDT address, and admin roles have been verified. The complete sponsor/investor financing lifecycle still needs a live end-to-end demo. Do not treat this prototype as legal, financial, or production software.
 
 ## What it does
 
@@ -33,21 +33,22 @@ See [architecture](docs/ARCHITECTURE.md), [product specification](docs/PRODUCT_S
 | RPC | `https://rpc.testnet.whitechain.io` |
 | Explorer | `https://explorer.testnet.whitechain.io` |
 | Organizer USDT | `0xcedfB56113143d55b2358b8CFbB0dEB5Ad2f55a7` (6 decimals) |
-| CreatorAdvance contract | Not deployed; app contract address remains unset |
-| Intended deployment wallet | User's connected MetaMask wallet; testnet balance read, transaction chain authorization still pending |
+| CreatorAdvance contract | `0x598c4fb5aeb0f2965782a73c40972ecb8056e7fa` (deployed and runtime code verified) |
+| Deployment transaction | `0x40bbda02613989298422d4517aa5987204549254e3806e8e1dc0490501f06384` (Whitechain Sepolia) |
+| Deployment wallet | User's connected MetaMask wallet; admin and fee recipient |
 
-The previously generated local test wallet is documented in [TEST_WALLET.md](docs/TEST_WALLET.md), but the user has instructed that the connected MetaMask wallet be used for the deployment. The app reads Sepolia balances, but the restored transaction connection reports chain 1 and must authorize chain 1874 before deployment. Never use mainnet assets. Deployment runs only on Whitechain Sepolia with the exact sponsor USDT; the connected MetaMask wallet receives admin and fee-recipient roles and must approve the transaction. See [deployment preflight](docs/DEPLOYMENT_PREFLIGHT.md).
+The previously generated local test wallet is documented in [TEST_WALLET.md](docs/TEST_WALLET.md), but it was not used. The connected MetaMask wallet deployed this contract on Whitechain Sepolia (chain 1874) and received the admin and fee-recipient roles. The mobile and API ignored environment files now point to the deployment. No mainnet transaction or asset was used. See the [deployment record](docs/DEPLOYMENT_PREFLIGHT.md).
 
 ## Local development
 
 Requirements: Node.js 22, pnpm 10, Java 17, Android SDK/ADB, PostgreSQL 18, and Foundry. Install dependencies with `pnpm install`.
 
-1. Configure the Android app environment in `apps/mobile/.env.local`. Copy the variable names from `.env.example`; set `EXPO_PUBLIC_REOWN_PROJECT_ID`, API URL, and only set `EXPO_PUBLIC_CONTRACT_ADDRESS` after an approved deployment.
-2. Configure `apps/api/.env` with `DATABASE_URL`, `APP_ORIGIN`, `PLATFORM_ADMIN_WALLETS`, and a private `PRIVATE_DOCUMENT_DIR`. `.env` is ignored by Git. Admin addresses are local test wallets and should never be end-user controlled in a real deployment.
+1. Configure the Android app environment in `apps/mobile/.env.local`. Copy the variable names from `.env.example`; set `EXPO_PUBLIC_REOWN_PROJECT_ID`, API URL, and `EXPO_PUBLIC_CONTRACT_ADDRESS` to the deployed Sepolia address above.
+2. Configure `apps/api/.env` with `DATABASE_URL`, `APP_ORIGIN`, `PLATFORM_ADMIN_WALLETS`, the deployed `CREATORADVANCE_CONTRACT_ADDRESS`, and a private `PRIVATE_DOCUMENT_DIR`. `.env` is ignored by Git. The current hackathon admin is the connected test wallet; use a separate multisig/role plan for any production deployment.
 3. Apply Prisma migrations with `pnpm --filter @creatoradvance/api db:migrate` and generate the client with `pnpm --filter @creatoradvance/api db:generate`.
 4. Run the API with `pnpm --filter @creatoradvance/api dev`.
 5. Build/install the Android development client with `pnpm --filter @creatoradvance/mobile android`; start Metro with `pnpm --filter @creatoradvance/mobile android:dev`.
-6. To prepare the testnet deploy screen, build contracts from `contracts/` with Foundry, then run `pnpm contracts:sync-mobile-artifact`. Connect MetaMask to Whitechain Sepolia in the app. The deploy screen refuses other chain IDs; review the token/role values and approve the deployment only in MetaMask.
+6. To reproduce a fresh testnet deployment, build contracts from `contracts/` with Foundry, then run `pnpm contracts:sync-mobile-artifact`. Connect MetaMask to Whitechain Sepolia in the app. The deploy screen refuses other chain IDs; review the token/role values and approve the deployment in MetaMask.
 
 The mobile app uses an external wallet through Reown. Wallet connection, SIWE, and transaction confirmations require user approval on the phone. A debug APK built from this workspace is at `apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk` (local build artifact, not checked in).
 

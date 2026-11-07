@@ -1,35 +1,34 @@
-# Whitechain Sepolia deployment preflight
+# Whitechain Sepolia deployment record
 
-Checked: 2026-11-06 (Asia/Kolkata). No deployment transaction has been sent.
+Verified: 2026-11-06 (Asia/Kolkata). This deployment used Whitechain Sepolia only.
 
-## Target and safeguards
+## Deployed contract
 
 - Network: Whitechain Sepolia, chain ID `1874` (`0x752`), RPC `https://rpc.testnet.whitechain.io`.
-- Contract: `CreatorAdvance`, Solidity 0.8.30, optimizer (200 runs), `via_ir`, Prague EVM target.
-- Organizer USDT: `0xcedfB56113143d55b2358b8CFbB0dEB5Ad2f55a7`; RPC confirms deployed bytecode, symbol `USDT`, six decimals.
-- Deployment signer: the user's connected MetaMask wallet only: `0xBFAbb5a94b91E6B32e81ea17b7CEE198cB67c02e`. The app read 100 sponsor USDT and 2 WBT from Whitechain Sepolia.
-- Constructor: `(usdt, feeRecipient, admin)` = `(organizer USDT, connected MetaMask address, connected MetaMask address)`.
-- Deployment UI and Foundry script both enforce chain ID 1874 and the exact sponsor USDT. WalletConnect/MetaMask must approve the transaction. No mnemonic or private key is used in app code or shell commands.
-- The same test wallet receives fee-recipient and admin roles for this hackathon deployment. This is centralized and for testnet demonstration only.
+- Contract: `0x598c4fb5aeb0f2965782a73c40972ecb8056e7fa`.
+- Transaction: `0x40bbda02613989298422d4517aa5987204549254e3806e8e1dc0490501f06384`.
+- Receipt: status `0x1`, block `0xbce161`; the app waited for five confirmations and verified deployed runtime bytecode (17,929 bytes).
+- Compiler: Solidity 0.8.30, optimizer (200 runs), `via_ir`, Prague EVM target.
+- Organizer USDT: `0xcedfB56113143d55b2358b8CFbB0dEB5Ad2f55a7`, with deployed code and six decimals.
 
-## Estimate and simulation
+## Wallet and constructor verification
 
-- RPC `eth_estimateGas` for compiled initcode and constructor args: `4,256,291` gas at sampled `5,001,000,000` wei, approximately `0.0213 WBT`.
-- Foundry simulation reported up to `5,488,104` gas at a conservative `10 gwei`, approximately `0.0549 WBT`. Gas prices vary; review MetaMask's actual fee before approval.
-- The Foundry script completed in simulation against chain 1874, confirming the USDT code and decimals. It was not broadcast. Neither estimate sent a transaction.
-- The app's transaction connector reports chain ID `1` while the app expects `1874`; no deployment was submitted. MetaMask must authorize Whitechain Sepolia for the CreatorAdvance connection before signing can proceed. The displayed Sepolia balances are read-only RPC results and do not prove that the wallet connection can sign on that chain.
+- Selected MetaMask wallet: `0xBFAbb5a94b91E6B32e81ea17b7CEE198cB67c02e`.
+- Whitechain Sepolia RPC balance before deployment: `100 USDT`, `2 WBT`.
+- Constructor arguments: `(USDT, selected MetaMask wallet, selected MetaMask wallet)` for `(usdt, feeRecipient, admin)`.
+- Onchain getters return the exact sponsor USDT and selected wallet as fee recipient.
+- `hasRole` checks confirm the selected wallet has `DEFAULT_ADMIN_ROLE`, `VERIFIER_ROLE`, `INVESTOR_ADMIN_ROLE`, and `PAUSER_ROLE`.
+- The Reown provider returned `eth_chainId` as a number (`1874`), not a hex string. The previous guard accepted only strings, falsely rejecting the valid Sepolia session. The guard now accepts numeric, hex, and decimal-string results.
+- No mainnet transaction or mainnet asset was used.
 
-## After the user-approved deployment
+## Local configuration
 
-1. Verify the transaction, deployed address, and constructor roles on Whitechain Sepolia explorer.
-2. Verify source using the same compiler settings and constructor arguments.
-3. Configure the deployed address in ignored mobile/API local environments; use the connected wallet address for the local platform admin if appropriate.
-4. Rebuild/reinstall the Android app and validate flows with sponsor test USDT and separately approved wallets where available.
+- `apps/mobile/.env.local` now sets `EXPO_PUBLIC_CONTRACT_ADDRESS` to the deployed contract.
+- `apps/api/.env` now sets `CREATORADVANCE_CONTRACT_ADDRESS` and allowlists the selected wallet as platform admin. Restart the API process to apply changed environment values.
+- Reload Metro after changing the mobile environment. Both files are ignored by Git and contain no mnemonic or private key.
 
-Never use mainnet assets or mainnet deployments for this hackathon flow.
+## Remaining validation
 
-## External gates
-
-- Wallet connection and transaction approval must happen in MetaMask on the Android device.
-- Sponsor USDT is required to exercise the financing lifecycle; the connected wallet's current USDT balance is unverified.
-- The [official ETHGlobal Mumbai submission information](https://ethglobal.com/events/mumbai/info/details) confirms the deadline is Saturday, November 7, 2026 at 09:00 IST. AI attribution and meaningful human contributions must be represented accurately.
+- Verify and publish the contract source on the Whitechain Sepolia explorer with the exact compiler settings and constructor arguments.
+- Test brand registration/activation, creator invoice approval, investor offer/funding, restricted claim ownership, repayment/default, and API event synchronization on the deployed address.
+- This is a hackathon testnet deployment. The same wallet has administrative and fee-recipient roles; use separate test wallets for lifecycle role testing where available.

@@ -154,16 +154,16 @@ const whitechainSepolia = defineChain({
 });
 
 export function configuredChainSync(): ChainSyncConfig | null {
-  const rawAddress = process.env.CREATORADVANCE_CONTRACT_ADDRESS;
+  const rawAddress = process.env.CREATORADVANCE_CONTRACT_ADDRESS?.trim();
   if (!rawAddress) return null;
   if (!/^0x[\da-fA-F]{40}$/.test(rawAddress)) throw new Error("CREATORADVANCE_CONTRACT_ADDRESS must be an EVM address");
-  const minimumConfirmations = Number(process.env.CHAIN_MIN_CONFIRMATIONS ?? 5);
+  const minimumConfirmations = Number(process.env.CHAIN_MIN_CONFIRMATIONS?.trim() ?? 5);
   if (!Number.isSafeInteger(minimumConfirmations) || minimumConfirmations < 1 || minimumConfirmations > 100) {
     throw new Error("CHAIN_MIN_CONFIRMATIONS must be an integer between 1 and 100");
   }
   const publicClient = createPublicClient({
     chain: whitechainSepolia,
-    transport: http(process.env.WHITECHAIN_RPC_URL ?? "https://rpc.testnet.whitechain.io"),
+    transport: http(process.env.WHITECHAIN_RPC_URL?.trim() || "https://rpc.testnet.whitechain.io", { timeout: 12_000, retryCount: 1 }),
   });
   return {
     contractAddress: getAddress(rawAddress),
@@ -259,7 +259,9 @@ export function deriveBrandChainState(events: readonly { eventName: string; payl
       ? event.payload as Record<string, unknown>
       : {};
     if (event.eventName === "BrandRegistered") chainStatus = 1;
-    else if (event.eventName === "BrandStatusChanged" && typeof payload.status === "string") {
+    else if (event.eventName === "BrandStatusChanged"
+      && ((typeof payload.status === "string" && /^\d+$/.test(payload.status))
+        || (typeof payload.status === "number" && Number.isInteger(payload.status)))) {
       chainStatus = Number(payload.status);
     } else if (event.eventName === "DefaultProcessed") chainStatus = 5;
   }

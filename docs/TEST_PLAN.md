@@ -4,31 +4,28 @@ Last updated: 2026-11-06.
 
 ## Verified locally
 
-- Mobile Jest: 4 tests pass.
-- API Vitest: 26 tests pass; the PostgreSQL integration test also passes against the isolated PostgreSQL 18 test database.
-- API/mobile lint and TypeScript checks pass.
-- `pnpm build` passes, including the Expo Android JS export and API TypeScript build. The output is a JS export, not a signed APK.
+- Mobile Jest: 8 tests pass; mobile TypeScript and lint pass.
+- API Vitest: 26 tests pass; PostgreSQL integration passes against the isolated PostgreSQL 18 test database.
+- Latest Expo Android JS export passes. Native debug APK and device home-screen smoke test passed earlier; no native code changed for the deployment guard.
 - Prisma schema validation/client generation and migrations `0001_init` and `0002_brand_chain_events` pass.
-- Foundry formatting check and 8 Solidity tests pass; the repayment accounting fuzz test passes 1,000 runs.
-- Android `:app:assembleDebug` passed from the primary Windows workspace; updated APK installed on the connected phone. Expo Android export bundled successfully.
-- Latest full root verification: `pnpm typecheck`, `pnpm lint`, `pnpm test`, and `pnpm build` pass; PostgreSQL integration passes separately; Foundry 8 tests, 1,000 repayment fuzz runs, and `forge fmt --check` pass.
-- Brand onboarding now requires a registration number, contact email, and private PDF evidence. Platform admins can access the document through an authenticated endpoint; the mobile client caches and opens it with native preview/share fallback.
-- Root README, MIT license, architecture diagram, AI usage disclosure, Whitechain feedback, and timed demo outline are present. GitHub reports the repository is private; no release push has been made.
-- Current phone smoke check: Android is reconnected; the app loads on the device. MetaMask address `0xBFAbb5a94b91E6B32e81ea17b7CEE198cB67c02e` reads 100 sponsor USDT and 2 WBT from the Sepolia RPC.
-- Added a guarded in-app deployment path: chain ID 1874 only, exact sponsor USDT code and six-decimal checks, connected wallet as fee recipient/admin, MetaMask transaction signature, receipt confirmation, and per-wallet saved address to prevent accidental redeployment.
-- Foundry deployment script simulation succeeded on chain 1874 with the sponsor token checks; it was not broadcast. No real deployment or wallet signature has occurred.
+- Foundry formatting and 8 Solidity tests pass; repayment-accounting fuzz test passes 1,000 runs.
+- Brand onboarding validates registration data and private PDF evidence; authenticated admin access and mobile preview/share fallback are implemented.
 
-## Not verified yet
+## Verified live on Whitechain Sepolia
 
-- The restored MetaMask transaction connection reports chain ID 1 while CreatorAdvance requires 1874. Switch the CreatorAdvance dapp connection itself to Whitechain Sepolia, reconnect, and verify chain 1874 before attempting deployment. The app blocks signing while the IDs differ.
-- Onchain brand and investor registration, signer approval/rejection, offer escrow, financing settlement, restricted NFT ownership, repayment, default, and explorer verification.
-- Live event indexing and reorg reconciliation against a deployed contract. Unit tests pass; no contract exists on Whitechain yet.
-- Verify brand onchain registration/status/collateral, typed invoice approval, investor offer/fund, repayment/default recovery, and receipt synchronization on a deployed contract.
-- Manually sign in with the connected wallet and exercise role flows on the physical device. Wallet choice/signature and transaction approvals have not been performed.
-- The API uses an isolated local PostgreSQL cluster configured in ignored `apps/api/.env`; it requires manual startup after a machine restart. No chain contract is configured.
-- Deployed/verified contracts, repository release readiness, and 2–4 minute demo submission. The user explicitly chose to keep the repository private; keep it private unless they later change that instruction.
-- ETHGlobal submission cutoff is confirmed by the official event information: Saturday, November 7, 2026 at 09:00 IST. Verify the Hacker Dashboard before submission.
-- Confirm eligibility under ETHGlobal's AI policy: attribution is required and AI must assist rather than create the entire project. The code history begins on Nov 6, 2026; include the user-authored specification and describe the developer's actual contributions accurately.
-- Verify the private registration PDF preview on Android after the latest native build.
+- Android app connected to the selected MetaMask wallet and read 100 sponsor USDT and 2 WBT from the Sepolia RPC.
+- CreatorAdvance deployed at `0x598c4fb5aeb0f2965782a73c40972ecb8056e7fa`; transaction `0x40bbda02613989298422d4517aa5987204549254e3806e8e1dc0490501f06384` succeeded at block `0xbce161`.
+- Five confirmations and 17,929-byte runtime code were verified.
+- Onchain `usdt()` and `feeRecipient()` values match the sponsor token and selected wallet. `hasRole` checks pass for default admin, verifier, investor admin, and pauser roles.
+- App now accepts Reown's numeric `eth_chainId` response as well as hex and decimal strings. This was the cause of the false chain mismatch.
+- Local ignored API/mobile environment files point to the deployment and selected wallet. Restart API and Metro after environment changes.
+
+## Still to test
+
+- Source verification on the Whitechain Sepolia explorer with the exact compiler settings and constructor arguments.
+- Authenticated API role access after restarting the API with the updated allowlist and contract address.
+- Brand registration and activation, creator invoice approval, investor offer/funding, restricted claim ownership, repayment/default, and event synchronization/reorg handling on the deployed contract.
+- Repeat the full flow with separate test wallets where available; capture a 2–4 minute demo.
+- Repository stays private per the user's instruction. Review ETHGlobal AI attribution/eligibility rules before submitting.
 
 Never use Anvil time travel as proof of live network maturity/default behavior. Mainnet is out of scope.

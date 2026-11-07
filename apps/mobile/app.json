@@ -10,7 +10,8 @@
     "plugins": [
       "expo-router",
       "./plugins/withShortAndroidCmakeBuildDir",
-      "expo-sharing"
+      "expo-sharing",
+      "expo-secure-store"
     ],
     "ios": {
       "supportsTablet": true

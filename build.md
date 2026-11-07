@@ -654,7 +654,7 @@ Investor:
 - Portfolio.
 - Repayments.
 - Profile.
-Users with authorized multiple roles should have an explicit role switcher, subject to server-side and onchain permissions.
+Each regular wallet is permanently assigned one workspace role (Creator, Brand, or Financier). The app must open only that role's dashboard and must not offer role switching. Platform admins are the sole exception and may preview all role dashboards for demo and review purposes; these previews do not grant contract permissions.
 Brand selection must be dynamic, not a hardcoded list.
 Create at least two fictional brands for the demo.
 Example:

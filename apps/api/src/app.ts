@@ -1,12 +1,14 @@
 import { createHash, randomBytes } from "node:crypto";
-import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
 import Fastify from "fastify";
 import { SiweMessage } from "siwe";
 import { getAddress, isAddress, keccak256, toBytes, type Hash } from "viem";
 import type { PrismaClient } from "./generated/prisma/client.js";
 import { rebuildInvoiceOffers } from "./chain-offers.js";
 import { rebuildBrandState } from "./chain-state.js";
+import {
+  createPrivateDocumentUploadUrl, loadPrivateDocument, ownsPrivateDocumentKey, privateDocumentKey,
+  removePrivateDocument, savePrivateDocument,
+} from "./private-documents.js";
 import {
   configuredChainSync,
   approvalNonceAbi,
@@ -19,6 +21,15 @@ import {
 } from "./chain-events.js";
 
 const sha256 = (value: string | Uint8Array) => createHash("sha256").update(value).digest("hex");
+const exclusiveWorkspaceRoles = ["CREATOR", "BRAND_ADMIN", "INVESTOR"] as const;
+
+function isPlatformAdmin(user: { roles: { role: string }[] }) {
+  return user.roles.some((binding) => binding.role === "PLATFORM_ADMIN");
+}
+
+function hasWorkspaceRole(user: { roles: { role: string }[] }, role: "CREATOR" | "INVESTOR") {
+  return user.roles.some((binding) => binding.role === role);
+}
 
 function brandBusinessProfileHash(profile: {
   legalName: string; publicName: string; website: string | null; countryCode: string; registrationNumber: string | null;
@@ -39,7 +50,6 @@ export function createApp(
 ) {
   const app = Fastify({ logger: false, bodyLimit: 12 * 1024 * 1024 });
   const origin = new URL(appOrigin);
-  const privateDocumentDir = resolve(process.env.PRIVATE_DOCUMENT_DIR ?? ".private-documents");
 
   async function currentUser(request: { headers: { authorization?: string } }) {
     const token = request.headers.authorization?.match(/^Bearer ([A-Za-z0-9_-]{40,})$/)?.[1];
@@ -55,6 +65,31 @@ export function createApp(
     .split(",").map((value) => value.trim().toLowerCase()).filter(Boolean));
 
   app.get("/health", async () => ({ status: "ok" }));
+
+  app.post<{ Body: { purpose?: string } }>("/documents/upload-url", async (request, reply) => {
+    const user = await currentUser(request);
+    if (!user) return reply.code(401).send({ error: "authentication_required" });
+    const purpose = request.body?.purpose;
+    if (purpose !== "brand-registration" && purpose !== "invoice-evidence"
+      && purpose !== "delivery-proof" && purpose !== "campaign-brief") {
+      return reply.code(400).send({ error: "invalid_document_purpose" });
+    }
+    if ((purpose === "invoice-evidence" || purpose === "delivery-proof" || purpose === "campaign-brief") && !hasWorkspaceRole(user, "CREATOR")) {
+      return reply.code(403).send({ error: "creator_role_required" });
+    }
+    if (purpose === "brand-registration" && isPlatformAdmin(user)) {
+      return reply.code(403).send({ error: "platform_admin_cannot_own_brand" });
+    }
+    if (purpose === "brand-registration"
+      && user.roles.some((binding) => exclusiveWorkspaceRoles.includes(binding.role as typeof exclusiveWorkspaceRoles[number]) && binding.role !== "BRAND_ADMIN")) {
+      return reply.code(409).send({ error: "wallet_role_already_assigned" });
+    }
+    const objectKey = privateDocumentKey(user.walletAddress);
+    const uploadUrl = await createPrivateDocumentUploadUrl(objectKey);
+    if (uploadUrl) return { mode: "signed", objectKey, uploadUrl, contentType: "application/pdf", maxBytes: 8 * 1024 * 1024 };
+    if (process.env.VERCEL) return reply.code(503).send({ error: "documents_storage_not_configured" });
+    return { mode: "inline", objectKey, maxBytes: 2 * 1024 * 1024 };
+  });
 
   app.get<{ Querystring: { search?: string } }>("/brands", async (request) => {
     const search = request.query.search?.trim().slice(0, 80);
@@ -124,7 +159,12 @@ export function createApp(
         where: { walletAddress },
         create: { walletAddress },
         update: {},
-        select: { id: true, walletAddress: true, roles: { select: { role: true } } },
+        select: {
+          id: true,
+          walletAddress: true,
+          roles: { select: { role: true } },
+          creatorProfile: { select: { handle: true, platform: true, countryCode: true } },
+        },
       });
       if (platformAdmins.has(walletAddress)) {
         await tx.userRoleBinding.upsert({
@@ -160,6 +200,7 @@ export function createApp(
             displayName: true,
             roles: { select: { role: true } },
             brandMemberships: { select: { brandId: true, role: true } },
+            creatorProfile: { select: { handle: true, platform: true, countryCode: true } },
           },
         },
       },
@@ -172,21 +213,32 @@ export function createApp(
     const user = await currentUser(request);
     if (!user) return reply.code(401).send({ error: "authentication_required" });
     const role = request.body?.role;
-    if (role !== "CREATOR" && role !== "INVESTOR") {
+    if (role !== "CREATOR" && role !== "INVESTOR" && role !== "BRAND_ADMIN") {
       return reply.code(400).send({ error: "role_not_self_assignable" });
     }
-    await prisma.userRoleBinding.upsert({
-      where: { userId_role: { userId: user.id, role } },
-      create: { userId: user.id, role },
-      update: {},
-    });
+    if (isPlatformAdmin(user)) return reply.code(403).send({ error: "platform_admin_role_is_separate" });
+    if (user.roles.some((binding) => exclusiveWorkspaceRoles.includes(binding.role as typeof exclusiveWorkspaceRoles[number]) && binding.role !== role)) {
+      return reply.code(409).send({ error: "wallet_role_already_assigned" });
+    }
+    try {
+      await prisma.userRoleBinding.upsert({
+        where: { userId_role: { userId: user.id, role } },
+        create: { userId: user.id, role },
+        update: {},
+      });
+    } catch (error) {
+      if (typeof error === "object" && error !== null && "code" in error && error.code === "P2002") {
+        return reply.code(409).send({ error: "wallet_role_already_assigned" });
+      }
+      throw error;
+    }
     return { role, status: "ACTIVE" };
   });
 
   app.put<{ Body: { handle?: string; platform?: string; countryCode?: string } }>("/creator/profile", async (request, reply) => {
     const user = await currentUser(request);
     if (!user) return reply.code(401).send({ error: "authentication_required" });
-    if (!user.roles.some((binding) => binding.role === "CREATOR")) {
+    if (!hasWorkspaceRole(user, "CREATOR")) {
       return reply.code(403).send({ error: "creator_role_required" });
     }
     const { handle, platform, countryCode } = request.body ?? {};
@@ -206,10 +258,14 @@ export function createApp(
 
   app.post<{ Body: {
     legalName?: string; publicName?: string; website?: string; countryCode?: string; registrationNumber?: string;
-    contactEmail?: string; registrationDocumentBase64?: string;
+    contactEmail?: string; registrationDocumentBase64?: string; registrationDocumentKey?: string;
   } }>("/brands", async (request, reply) => {
     const user = await currentUser(request);
     if (!user) return reply.code(401).send({ error: "authentication_required" });
+    if (isPlatformAdmin(user)) return reply.code(403).send({ error: "platform_admin_cannot_own_brand" });
+    if (user.roles.some((binding) => exclusiveWorkspaceRoles.includes(binding.role as typeof exclusiveWorkspaceRoles[number]) && binding.role !== "BRAND_ADMIN")) {
+      return reply.code(409).send({ error: "wallet_role_already_assigned" });
+    }
     const body = request.body ?? {};
     const legalName = typeof body.legalName === "string" ? body.legalName.trim() : "";
     const publicName = typeof body.publicName === "string" ? body.publicName.trim() : "";
@@ -224,22 +280,29 @@ export function createApp(
       || (body.website !== undefined && (typeof body.website !== "string" || body.website.length > 253))
       || registrationNumber.length < 1 || registrationNumber.length > 120
       || contactEmail.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail)
-      || typeof body.registrationDocumentBase64 !== "string"
-      || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(body.registrationDocumentBase64)) {
+      || (body.registrationDocumentKey === undefined && (typeof body.registrationDocumentBase64 !== "string"
+        || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(body.registrationDocumentBase64)))
+      || (body.registrationDocumentKey !== undefined && (typeof body.registrationDocumentKey !== "string" || !ownsPrivateDocumentKey(body.registrationDocumentKey, user.walletAddress)))) {
       return reply.code(400).send({ error: "invalid_brand_application" });
     }
     const website = body.website?.trim() || null;
-    const registrationDocument = Buffer.from(body.registrationDocumentBase64, "base64");
+    let registrationDocument: Uint8Array;
+    let registrationObjectKey: string;
+    if (body.registrationDocumentKey) {
+      registrationObjectKey = body.registrationDocumentKey;
+      try { registrationDocument = await loadPrivateDocument(registrationObjectKey); }
+      catch { return reply.code(400).send({ error: "brand_registration_document_missing" }); }
+    } else {
+      registrationDocument = Buffer.from(body.registrationDocumentBase64!, "base64");
+      registrationObjectKey = privateDocumentKey(user.walletAddress);
+    }
     if (registrationDocument.length < 8 || registrationDocument.length > 8 * 1024 * 1024
-      || registrationDocument.subarray(0, 5).toString() !== "%PDF-") {
+      || Buffer.from(registrationDocument).subarray(0, 5).toString() !== "%PDF-") {
       return reply.code(400).send({ error: "invalid_brand_registration_document" });
     }
     const businessProfileHash = brandBusinessProfileHash({ legalName, publicName, website, countryCode, registrationNumber });
     const chainBrandId = keccak256(toBytes(`creatoradvance-brand:${user.walletAddress}:${randomBytes(16).toString("hex")}`));
-    await mkdir(privateDocumentDir, { recursive: true });
-    const registrationObjectKey = `${randomBytes(24).toString("hex")}.pdf`;
-    const registrationPath = join(privateDocumentDir, registrationObjectKey);
-    await writeFile(registrationPath, registrationDocument, { flag: "wx", mode: 0o600 });
+    if (!body.registrationDocumentKey) await savePrivateDocument(registrationObjectKey, registrationDocument);
     try {
       const brand = await prisma.$transaction(async (tx) => {
         const created = await tx.brand.create({ data: {
@@ -264,7 +327,10 @@ export function createApp(
       });
       return reply.code(201).send({ brand, businessProfileHash });
     } catch (error) {
-      await unlink(registrationPath).catch(() => undefined);
+      await removePrivateDocument(registrationObjectKey).catch(() => undefined);
+      if (typeof error === "object" && error !== null && "code" in error && error.code === "P2002") {
+        return reply.code(409).send({ error: "wallet_role_already_assigned" });
+      }
       throw error;
     }
   });
@@ -272,11 +338,21 @@ export function createApp(
   app.get("/brand/applications", async (request, reply) => {
     const user = await currentUser(request);
     if (!user) return reply.code(401).send({ error: "authentication_required" });
+    if (isPlatformAdmin(user)) {
+      const brands = await prisma.brand.findMany({
+        select: {
+          id: true, chainBrandId: true, legalName: true, publicName: true, website: true, countryCode: true,
+          registrationNumber: true, contactEmail: true, walletAddress: true, status: true, chainStatus: true, verifiedAt: true,
+        },
+        orderBy: [{ status: "asc" }, { createdAt: "desc" }], take: 100,
+      });
+      return { brands: brands.map((brand) => ({ ...brand, role: "BRAND_ADMIN", businessProfileHash: brandBusinessProfileHash(brand) })) };
+    }
     const memberships = await prisma.brandMember.findMany({
       where: { userId: user.id },
       select: { role: true, brand: { select: {
         id: true, chainBrandId: true, legalName: true, publicName: true, website: true, countryCode: true,
-        registrationNumber: true, contactEmail: true, status: true, chainStatus: true, verifiedAt: true,
+        registrationNumber: true, contactEmail: true, walletAddress: true, status: true, chainStatus: true, verifiedAt: true,
       } } },
       orderBy: { createdAt: "desc" },
     });
@@ -294,7 +370,7 @@ export function createApp(
     const brands = await prisma.brand.findMany({
       select: {
         id: true, chainBrandId: true, legalName: true, publicName: true, website: true, countryCode: true,
-        registrationNumber: true, walletAddress: true, status: true, chainStatus: true, verifiedAt: true,
+        registrationNumber: true, contactEmail: true, walletAddress: true, status: true, chainStatus: true, verifiedAt: true,
       },
       orderBy: [{ status: "asc" }, { createdAt: "asc" }],
       take: 100,
@@ -312,9 +388,9 @@ export function createApp(
       where: { id: request.params.brandId }, select: { registrationObjectKey: true },
     });
     const objectKey = brand?.registrationObjectKey;
-    if (!objectKey || !/^[a-f\d]{48}\.pdf$/i.test(objectKey)) return reply.code(404).send({ error: "brand_registration_evidence_not_found" });
+    if (!objectKey || !/^[a-f\d]{20}\/[a-f\d]{48}\.pdf$/i.test(objectKey)) return reply.code(404).send({ error: "brand_registration_evidence_not_found" });
     try {
-      const document = await readFile(join(privateDocumentDir, objectKey));
+      const document = await loadPrivateDocument(objectKey);
       return reply.type("application/pdf").header("Cache-Control", "private, no-store")
         .header("Content-Disposition", "attachment; filename=business-registration.pdf").send(document);
     } catch {
@@ -435,19 +511,28 @@ export function createApp(
 
   app.post<{ Body: {
     brandId?: string; invoiceNumber?: string; faceValue?: string; dueDate?: string; listingExpiry?: string;
-    evidenceBase64?: string; deliverySha256?: string; campaignSha256?: string;
+    evidenceBase64?: string; evidenceDocumentKey?: string;
+    deliveryProofBase64?: string; deliveryProofDocumentKey?: string;
+    campaignBriefBase64?: string; campaignBriefDocumentKey?: string;
+    deliverySha256?: string; campaignSha256?: string;
   } }>("/creator/invoices", async (request, reply) => {
     const user = await currentUser(request);
     if (!user) return reply.code(401).send({ error: "authentication_required" });
-    if (!user.roles.some((binding) => binding.role === "CREATOR")) return reply.code(403).send({ error: "creator_role_required" });
+    if (!hasWorkspaceRole(user, "CREATOR")) return reply.code(403).send({ error: "creator_role_required" });
     const body = request.body ?? {};
     if (typeof body.brandId !== "string" || typeof body.invoiceNumber !== "string"
       || body.invoiceNumber.trim().length < 1 || body.invoiceNumber.length > 120
       || typeof body.faceValue !== "string" || !/^\d{1,24}$/.test(body.faceValue) || BigInt(body.faceValue) <= 0n
       || typeof body.dueDate !== "string" || typeof body.listingExpiry !== "string"
-      || typeof body.evidenceBase64 !== "string" || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(body.evidenceBase64)
-      || typeof body.deliverySha256 !== "string" || !/^[\da-f]{64}$/i.test(body.deliverySha256)
-      || typeof body.campaignSha256 !== "string" || !/^[\da-f]{64}$/i.test(body.campaignSha256)) {
+      || (body.evidenceDocumentKey === undefined && (typeof body.evidenceBase64 !== "string"
+        || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(body.evidenceBase64)))
+      || (body.evidenceDocumentKey !== undefined && (typeof body.evidenceDocumentKey !== "string" || !ownsPrivateDocumentKey(body.evidenceDocumentKey, user.walletAddress)))
+      || !(typeof body.deliveryProofDocumentKey === "string" && ownsPrivateDocumentKey(body.deliveryProofDocumentKey, user.walletAddress)
+        || typeof body.deliveryProofBase64 === "string" && /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(body.deliveryProofBase64)
+        || typeof body.deliverySha256 === "string" && /^[\da-f]{64}$/i.test(body.deliverySha256))
+      || !(typeof body.campaignBriefDocumentKey === "string" && ownsPrivateDocumentKey(body.campaignBriefDocumentKey, user.walletAddress)
+        || typeof body.campaignBriefBase64 === "string" && /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(body.campaignBriefBase64)
+        || typeof body.campaignSha256 === "string" && /^[\da-f]{64}$/i.test(body.campaignSha256))) {
       return reply.code(400).send({ error: "invalid_invoice" });
     }
     const dueDate = new Date(body.dueDate);
@@ -457,18 +542,36 @@ export function createApp(
       || dueDate <= now || listingExpiry <= now || listingExpiry >= dueDate) {
       return reply.code(400).send({ error: "invalid_invoice_dates" });
     }
-    const evidence = Buffer.from(body.evidenceBase64, "base64");
-    if (evidence.length < 8 || evidence.length > 8 * 1024 * 1024 || evidence.subarray(0, 5).toString() !== "%PDF-") {
+    let evidence: Uint8Array;
+    if (body.evidenceDocumentKey) {
+      try { evidence = await loadPrivateDocument(body.evidenceDocumentKey); }
+      catch { return reply.code(400).send({ error: "invoice_evidence_document_missing" }); }
+    } else evidence = Buffer.from(body.evidenceBase64!, "base64");
+    if (evidence.length < 8 || evidence.length > 8 * 1024 * 1024 || Buffer.from(evidence).subarray(0, 5).toString() !== "%PDF-") {
       return reply.code(400).send({ error: "invalid_pdf_evidence" });
     }
+    const deliveryProof = body.deliveryProofDocumentKey ? await loadPrivateDocument(body.deliveryProofDocumentKey)
+      : body.deliveryProofBase64 ? Buffer.from(body.deliveryProofBase64, "base64") : undefined;
+    const campaignBrief = body.campaignBriefDocumentKey ? await loadPrivateDocument(body.campaignBriefDocumentKey)
+      : body.campaignBriefBase64 ? Buffer.from(body.campaignBriefBase64, "base64") : undefined;
+    for (const supportingDocument of [deliveryProof, campaignBrief]) {
+      if (supportingDocument && (supportingDocument.length < 8 || supportingDocument.length > 8 * 1024 * 1024
+        || Buffer.from(supportingDocument).subarray(0, 5).toString() !== "%PDF-")) {
+        return reply.code(400).send({ error: "invalid_pdf_supporting_evidence" });
+      }
+    }
+    const deliverySha256 = deliveryProof ? sha256(deliveryProof) : body.deliverySha256!.toLowerCase();
+    const campaignSha256 = campaignBrief ? sha256(campaignBrief) : body.campaignSha256!.toLowerCase();
     const brand = await prisma.brand.findUnique({ where: { id: body.brandId }, select: { id: true, chainBrandId: true, status: true } });
     if (!brand || brand.status !== "ACTIVE") return reply.code(409).send({ error: "brand_not_active_onchain" });
 
-    await mkdir(privateDocumentDir, { recursive: true });
-    const objectKey = `${randomBytes(24).toString("hex")}.pdf`;
-    const documentPath = join(privateDocumentDir, objectKey);
+    const objectKey = body.evidenceDocumentKey ?? privateDocumentKey(user.walletAddress);
+    const deliveryObjectKey = body.deliveryProofDocumentKey ?? (deliveryProof ? privateDocumentKey(user.walletAddress) : null);
+    const campaignObjectKey = body.campaignBriefDocumentKey ?? (campaignBrief ? privateDocumentKey(user.walletAddress) : null);
     const evidenceSha256 = sha256(evidence);
-    await writeFile(documentPath, evidence, { flag: "wx", mode: 0o600 });
+    if (!body.evidenceDocumentKey) await savePrivateDocument(objectKey, evidence);
+    if (deliveryObjectKey && !body.deliveryProofDocumentKey) await savePrivateDocument(deliveryObjectKey, deliveryProof!);
+    if (campaignObjectKey && !body.campaignBriefDocumentKey) await savePrivateDocument(campaignObjectKey, campaignBrief!);
     try {
       const invoiceNumberHash = keccak256(toBytes(body.invoiceNumber.normalize("NFKC").trim().toLowerCase()));
       const invoice = await prisma.invoice.create({ data: {
@@ -480,8 +583,10 @@ export function createApp(
         listingExpiry,
         evidenceObjectKey: objectKey,
         evidenceSha256,
-        deliverySha256: body.deliverySha256.toLowerCase(),
-        campaignSha256: body.campaignSha256.toLowerCase(),
+        deliveryEvidenceObjectKey: deliveryObjectKey,
+        campaignBriefObjectKey: campaignObjectKey,
+        deliverySha256,
+        campaignSha256,
         status: "PENDING_BRAND",
       }, select: { id: true, brandId: true, faceValue: true, dueDate: true, listingExpiry: true, evidenceSha256: true, status: true } });
       return reply.code(201).send({
@@ -494,24 +599,30 @@ export function createApp(
           dueDate: String(Math.floor(dueDate.getTime() / 1000)),
           listingExpiry: String(Math.floor(listingExpiry.getTime() / 1000)),
           pdfHash: `0x${evidenceSha256}`,
-          deliveryHash: `0x${body.deliverySha256.toLowerCase()}`,
-          campaignHash: `0x${body.campaignSha256.toLowerCase()}`,
+          deliveryHash: `0x${deliverySha256}`,
+          campaignHash: `0x${campaignSha256}`,
         },
       });
     } catch (error) {
-      await unlink(documentPath).catch(() => undefined);
+      await Promise.all([objectKey, deliveryObjectKey, campaignObjectKey].filter((key): key is string => Boolean(key)).map(key => removePrivateDocument(key).catch(() => undefined)));
       const code = typeof error === "object" && error !== null && "code" in error ? error.code : undefined;
       if (code === "P2002") return reply.code(409).send({ error: "duplicate_invoice_number_for_brand" });
       throw error;
     }
   });
 
-  app.get<{ Params: { invoiceId: string } }>("/invoices/:invoiceId/evidence", async (request, reply) => {
+  app.get<{ Params: { invoiceId: string; kind: string } }>("/invoices/:invoiceId/documents/:kind", async (request, reply) => {
     const user = await currentUser(request);
     if (!user) return reply.code(401).send({ error: "authentication_required" });
+    const documentFields = {
+      invoice: "evidenceObjectKey",
+      delivery: "deliveryEvidenceObjectKey",
+      campaign: "campaignBriefObjectKey",
+    } as const;
+    if (!(request.params.kind in documentFields)) return reply.code(400).send({ error: "invalid_document_kind" });
     const invoice = await prisma.invoice.findUnique({
       where: { id: request.params.invoiceId },
-      select: { creatorId: true, brandId: true, evidenceObjectKey: true },
+      select: { creatorId: true, brandId: true, evidenceObjectKey: true, deliveryEvidenceObjectKey: true, campaignBriefObjectKey: true },
     });
     if (!invoice) return reply.code(404).send({ error: "invoice_not_found" });
     const isCreator = invoice.creatorId === user.id;
@@ -520,17 +631,24 @@ export function createApp(
     });
     const isPlatformAdmin = user.roles.some((binding) => binding.role === "PLATFORM_ADMIN");
     if (!isCreator && !isBrandMember && !isPlatformAdmin) return reply.code(403).send({ error: "invoice_access_denied" });
-    const evidence = await readFile(join(privateDocumentDir, invoice.evidenceObjectKey));
-    return reply.type("application/pdf").header("Cache-Control", "private, no-store").header("Content-Disposition", "attachment; filename=invoice-evidence.pdf").send(evidence);
+    const kind = request.params.kind as keyof typeof documentFields;
+    const key = invoice[documentFields[kind]];
+    if (!key) return reply.code(404).send({ error: "invoice_document_not_found" });
+    const document = await loadPrivateDocument(key);
+    return reply.type("application/pdf").header("Cache-Control", "private, no-store").header("Content-Disposition", `attachment; filename=${kind}.pdf`).send(document);
+  });
+
+  app.get<{ Params: { invoiceId: string } }>("/invoices/:invoiceId/evidence", async (request, reply) => {
+    return reply.redirect(`/invoices/${encodeURIComponent(request.params.invoiceId)}/documents/invoice`, 308);
   });
 
   app.get("/creator/invoices", async (request, reply) => {
     const user = await currentUser(request);
     if (!user) return reply.code(401).send({ error: "authentication_required" });
-    if (!user.roles.some((binding) => binding.role === "CREATOR")) return reply.code(403).send({ error: "creator_role_required" });
+    if (!hasWorkspaceRole(user, "CREATOR")) return reply.code(403).send({ error: "creator_role_required" });
     const invoices = await prisma.invoice.findMany({
       where: { creatorId: user.id },
-      select: { id: true, brandId: true, faceValue: true, dueDate: true, listingExpiry: true, status: true, chainInvoiceId: true },
+      select: { id: true, brandId: true, faceValue: true, dueDate: true, listingExpiry: true, status: true, chainInvoiceId: true, brand: { select: { publicName: true, countryCode: true, website: true } } },
       orderBy: { createdAt: "desc" },
       take: 100,
     });
@@ -540,7 +658,7 @@ export function createApp(
   app.get<{ Params: { invoiceId: string } }>("/creator/invoices/:invoiceId/onchain", async (request, reply) => {
     const user = await currentUser(request);
     if (!user) return reply.code(401).send({ error: "authentication_required" });
-    if (!user.roles.some((binding) => binding.role === "CREATOR")) return reply.code(403).send({ error: "creator_role_required" });
+    if (!hasWorkspaceRole(user, "CREATOR")) return reply.code(403).send({ error: "creator_role_required" });
     const invoice = await prisma.invoice.findUnique({
       where: { id: request.params.invoiceId },
       select: {
@@ -568,11 +686,11 @@ export function createApp(
   app.get("/brand/invoices", async (request, reply) => {
     const user = await currentUser(request);
     if (!user) return reply.code(401).send({ error: "authentication_required" });
-    const memberships = await prisma.brandMember.findMany({ where: { userId: user.id }, select: { brandId: true } });
-    if (memberships.length === 0) return { invoices: [] };
+    const memberships = isPlatformAdmin(user) ? [] : await prisma.brandMember.findMany({ where: { userId: user.id }, select: { brandId: true } });
+    if (!isPlatformAdmin(user) && memberships.length === 0) return { invoices: [] };
     const invoices = await prisma.invoice.findMany({
-      where: { brandId: { in: memberships.map((membership) => membership.brandId) } },
-      select: { id: true, brandId: true, creatorId: true, chainInvoiceId: true, faceValue: true, dueDate: true, listingExpiry: true, status: true, createdAt: true },
+      where: isPlatformAdmin(user) ? {} : { brandId: { in: memberships.map((membership) => membership.brandId) } },
+      select: { id: true, brandId: true, creatorId: true, chainInvoiceId: true, faceValue: true, dueDate: true, listingExpiry: true, status: true, createdAt: true, brand: { select: { publicName: true, countryCode: true, website: true } }, creator: { select: { walletAddress: true } } },
       orderBy: { createdAt: "desc" },
       take: 100,
     });
@@ -653,10 +771,10 @@ export function createApp(
   app.get("/investor/invoices", async (request, reply) => {
     const user = await currentUser(request);
     if (!user) return reply.code(401).send({ error: "authentication_required" });
-    if (!user.roles.some((binding) => binding.role === "INVESTOR")) return reply.code(403).send({ error: "investor_role_required" });
+    if (!hasWorkspaceRole(user, "INVESTOR")) return reply.code(403).send({ error: "investor_role_required" });
     const invoices = await prisma.invoice.findMany({
       where: { status: "FINANCEABLE", chainInvoiceId: { not: null }, listingExpiry: { gt: new Date() } },
-      select: { id: true, chainInvoiceId: true, brandId: true, faceValue: true, dueDate: true, listingExpiry: true },
+      select: { id: true, chainInvoiceId: true, brandId: true, faceValue: true, dueDate: true, listingExpiry: true, brand: { select: { publicName: true, countryCode: true, website: true } } },
       orderBy: { listingExpiry: "asc" },
       take: 100,
     });
@@ -666,7 +784,7 @@ export function createApp(
   app.get("/investor/offers", async (request, reply) => {
     const user = await currentUser(request);
     if (!user) return reply.code(401).send({ error: "authentication_required" });
-    if (!user.roles.some((binding) => binding.role === "INVESTOR")) return reply.code(403).send({ error: "investor_role_required" });
+    if (!hasWorkspaceRole(user, "INVESTOR")) return reply.code(403).send({ error: "investor_role_required" });
     const offers = await prisma.offer.findMany({
       where: { investorId: user.id },
       select: { id: true, chainOfferId: true, invoiceId: true, price: true, expiresAt: true, status: true, createdAt: true },
@@ -679,7 +797,7 @@ export function createApp(
   app.get<{ Params: { invoiceId: string } }>("/creator/invoices/:invoiceId/offers", async (request, reply) => {
     const user = await currentUser(request);
     if (!user) return reply.code(401).send({ error: "authentication_required" });
-    if (!user.roles.some((binding) => binding.role === "CREATOR")) return reply.code(403).send({ error: "creator_role_required" });
+    if (!hasWorkspaceRole(user, "CREATOR")) return reply.code(403).send({ error: "creator_role_required" });
     const invoice = await prisma.invoice.findUnique({ where: { id: request.params.invoiceId }, select: { creatorId: true } });
     if (!invoice) return reply.code(404).send({ error: "invoice_not_found" });
     if (invoice.creatorId !== user.id) return reply.code(403).send({ error: "invoice_access_denied" });

@@ -17,5 +17,6 @@ artifacts/
 *.pem
 *.key
 *.tsbuildinfo
+supabase/.temp/
 android/
 ios/

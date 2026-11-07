@@ -56,6 +56,7 @@ model User {
   roles          UserRoleBinding[]
   brandMemberships BrandMember[]
   creatorProfile CreatorProfile?
+  createdInvoices Invoice[] @relation("InvoiceCreator")
   sessions       Session[]
 }
 
@@ -136,12 +137,15 @@ model Invoice {
   listingExpiry          DateTime
   evidenceObjectKey      String
   evidenceSha256         String        @db.Char(64)
+  deliveryEvidenceObjectKey String?
+  campaignBriefObjectKey String?
   deliverySha256         String        @db.Char(64)
   campaignSha256         String        @db.Char(64)
   status                 InvoiceStatus @default(DRAFT)
   createdAt              DateTime      @default(now())
   updatedAt              DateTime      @updatedAt
   brand                  Brand         @relation(fields: [brandId], references: [id], onDelete: Restrict)
+  creator                User          @relation("InvoiceCreator", fields: [creatorId], references: [id], onDelete: Restrict)
   offers                 Offer[]
   transactions           Transaction[]
   @@unique([brandId, invoiceNumberHash])

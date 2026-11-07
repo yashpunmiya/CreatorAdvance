@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
@@ -71,6 +72,7 @@ const makePrisma = () => {
         id: "user-1",
         walletAddress: where.walletAddress,
         roles: [],
+        creatorProfile: null,
       })),
     },
     userRoleBinding: { upsert: vi.fn().mockResolvedValue({}) },
@@ -129,7 +131,14 @@ describe("API public and wallet-auth routes", () => {
       payload: { message: message.prepareMessage(), signature },
     });
     expect(verifyResponse.statusCode).toBe(200);
-    expect(verifyResponse.json()).toMatchObject({ user: { walletAddress: account.address.toLowerCase() } });
+    expect(verifyResponse.json()).toMatchObject({
+      user: { walletAddress: account.address.toLowerCase(), creatorProfile: null },
+    });
+    expect(prisma.user.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      select: expect.objectContaining({
+        creatorProfile: { select: { handle: true, platform: true, countryCode: true } },
+      }),
+    }));
     expect(prisma.authNonce.deleteMany).toHaveBeenCalledTimes(1);
     expect(prisma.session.create).toHaveBeenCalledTimes(1);
 
@@ -162,7 +171,7 @@ describe("API public and wallet-auth routes", () => {
     await app.close();
   });
 
-  it("allows authenticated users to choose only self-service creator or investor roles", async () => {
+  it("locks a regular wallet to one self-service role", async () => {
     const prisma = makePrisma();
     prisma.sessionLookup.mockResolvedValue({ user: { id: "user-1", walletAddress: "0xabc", roles: [] } });
     const app = createApp(prisma as never);
@@ -172,6 +181,10 @@ describe("API public and wallet-auth routes", () => {
     expect(prisma.userRoleBinding.upsert).toHaveBeenCalledWith(expect.objectContaining({
       where: { userId_role: { userId: "user-1", role: "CREATOR" } },
     }));
+    prisma.sessionLookup.mockResolvedValue({ user: { id: "user-1", walletAddress: "0xabc", roles: [{ role: "CREATOR" }] } });
+    const investor = await app.inject({ method: "POST", url: "/roles", headers, payload: { role: "INVESTOR" } });
+    expect(investor.statusCode).toBe(409);
+    expect(investor.json()).toEqual({ error: "wallet_role_already_assigned" });
     const admin = await app.inject({ method: "POST", url: "/roles", headers, payload: { role: "PLATFORM_ADMIN" } });
     expect(admin.statusCode).toBe(400);
     await app.close();
@@ -212,10 +225,11 @@ describe("API public and wallet-auth routes", () => {
       expect(response.statusCode).toBe(201);
       expect(response.json().brand).toMatchObject({ id: "brand-2", status: "PENDING", walletAddress: "0xabc" });
       const stored = prisma.brand.create.mock.calls[0]?.[0].data as Record<string, string>;
-      expect(stored.registrationObjectKey).toMatch(/^[a-f\d]{48}\.pdf$/);
+      expect(stored.registrationObjectKey).toMatch(/^[a-f\d]{20}\/[a-f\d]{48}\.pdf$/);
       expect(await readFile(join(storage, stored.registrationObjectKey))).toEqual(document);
       expect(stored.contactEmail).toBe("finance@example.test");
       expect(prisma.brandMember.create).toHaveBeenCalledWith(expect.objectContaining({ data: { brandId: "brand-2", userId: "user-1", role: "BRAND_ADMIN" } }));
+      expect(prisma.userRoleBinding.upsert).toHaveBeenCalledWith(expect.objectContaining({ where: { userId_role: { userId: "user-1", role: "BRAND_ADMIN" } } }));
     } finally {
       await app.close();
       if (previousDir === undefined) delete process.env.PRIVATE_DOCUMENT_DIR;
@@ -259,6 +273,23 @@ describe("API public and wallet-auth routes", () => {
     await app.close();
   });
 
+  it("keeps platform admin separate from creator and company workspaces", async () => {
+    const prisma = makePrisma();
+    prisma.sessionLookup.mockResolvedValue({ user: { id: "admin-1", walletAddress: "0xadmin", roles: [{ role: "PLATFORM_ADMIN" }] } });
+    const app = createApp(prisma as never);
+    const headers = { authorization: "Bearer " + "x".repeat(48) };
+    const role = await app.inject({ method: "POST", url: "/roles", headers, payload: { role: "CREATOR" } });
+    const company = await app.inject({ method: "POST", url: "/brands", headers, payload: { legalName: "Demo Co" } });
+    const upload = await app.inject({ method: "POST", url: "/documents/upload-url", headers, payload: { purpose: "brand-registration" } });
+    expect(role.statusCode).toBe(403);
+    expect(role.json()).toEqual({ error: "platform_admin_role_is_separate" });
+    expect(company.statusCode).toBe(403);
+    expect(company.json()).toEqual({ error: "platform_admin_cannot_own_brand" });
+    expect(upload.statusCode).toBe(403);
+    expect(prisma.brand.create).not.toHaveBeenCalled();
+    await app.close();
+  });
+
   it("does not accept invoices for a brand without indexed onchain activation", async () => {
     const prisma = makePrisma();
     prisma.sessionLookup.mockResolvedValue({ user: { id: "creator-1", walletAddress: "0xabc", roles: [{ role: "CREATOR" }] } });
@@ -289,7 +320,9 @@ describe("API public and wallet-auth routes", () => {
     const previousDir = process.env.PRIVATE_DOCUMENT_DIR;
     process.env.PRIVATE_DOCUMENT_DIR = storage;
     const app = createApp(prisma as never);
-    const pdf = Buffer.from("%PDF-1.4\nCreator evidence");
+    const pdf = Buffer.from("%PDF-1.4\nInvoice");
+    const deliveryPdf = Buffer.from("%PDF-1.4\nDelivery");
+    const campaignPdf = Buffer.from("%PDF-1.4\nCampaign");
     try {
       const response = await app.inject({
         method: "POST", url: "/creator/invoices",
@@ -298,22 +331,41 @@ describe("API public and wallet-auth routes", () => {
           brandId: "brand-1", invoiceNumber: "INV-22", faceValue: "1250000000",
           dueDate: new Date(Date.now() + 40 * 86400000).toISOString(),
           listingExpiry: new Date(Date.now() + 8 * 86400000).toISOString(),
-          evidenceBase64: pdf.toString("base64"), deliverySha256: "a".repeat(64), campaignSha256: "b".repeat(64),
+          evidenceBase64: pdf.toString("base64"), deliveryProofBase64: deliveryPdf.toString("base64"), campaignBriefBase64: campaignPdf.toString("base64"),
         },
       });
       expect(response.statusCode).toBe(201);
-      const chain = response.json().chain as { brandId: string; invoiceNumberHash: string; invoiceId: string; faceValue: string; pdfHash: string };
+      const chain = response.json().chain as { brandId: string; invoiceNumberHash: string; invoiceId: string; faceValue: string; pdfHash: string; deliveryHash: string; campaignHash: string };
       expect(chain.brandId).toBe(`0x${"ab".repeat(32)}`);
       expect(chain.invoiceNumberHash).toMatch(/^0x[\da-f]{64}$/);
       expect(chain.invoiceId).toBe(deriveInvoiceId(chain.brandId as `0x${string}`, chain.invoiceNumberHash as `0x${string}`));
       expect(chain.faceValue).toBe("1250000000");
       expect(chain.pdfHash).toMatch(/^0x[\da-f]{64}$/);
+      expect(chain.deliveryHash).toBe(`0x${createHash("sha256").update(deliveryPdf).digest("hex")}`);
+      expect(chain.campaignHash).toBe(`0x${createHash("sha256").update(campaignPdf).digest("hex")}`);
       const stored = prisma.invoice.create.mock.calls[0]?.[0].data as Record<string, string>;
       expect(stored.status).toBe("PENDING_BRAND");
       expect(stored.invoiceNumberCiphertext).toBeUndefined();
-      expect(stored.evidenceObjectKey).toMatch(/^[a-f\d]{48}\.pdf$/);
+      expect(stored.evidenceObjectKey).toMatch(/^[a-f\d]{20}\/[a-f\d]{48}\.pdf$/);
       expect(await readFile(join(storage, stored.evidenceObjectKey))).toEqual(pdf);
       expect(stored.evidenceSha256).toMatch(/^[a-f\d]{64}$/);
+      expect(stored.deliverySha256).toBe(createHash("sha256").update(deliveryPdf).digest("hex"));
+      expect(stored.campaignSha256).toBe(createHash("sha256").update(campaignPdf).digest("hex"));
+      expect(await readFile(join(storage, String(stored.deliveryEvidenceObjectKey)))).toEqual(deliveryPdf);
+      expect(await readFile(join(storage, String(stored.campaignBriefObjectKey)))).toEqual(campaignPdf);
+      prisma.invoice.findUnique.mockResolvedValue({
+        creatorId: "creator-1", brandId: "brand-1", evidenceObjectKey: stored.evidenceObjectKey,
+        deliveryEvidenceObjectKey: stored.deliveryEvidenceObjectKey, campaignBriefObjectKey: stored.campaignBriefObjectKey,
+      });
+      prisma.sessionLookup.mockResolvedValue({ user: { id: "company-1", walletAddress: "0xcompany", roles: [{ role: "BRAND_ADMIN" }] } });
+      prisma.brandMember.findUnique.mockResolvedValue({ userId: "company-1" });
+      const companyResponse = await app.inject({
+        method: "GET", url: "/invoices/invoice-1/documents/delivery",
+        headers: { authorization: "Bearer " + "x".repeat(48) },
+      });
+      expect(companyResponse.statusCode).toBe(200);
+      expect(companyResponse.headers["content-type"]).toContain("application/pdf");
+      expect(companyResponse.rawPayload).toEqual(deliveryPdf);
     } finally {
       await app.close();
       if (previousDir === undefined) delete process.env.PRIVATE_DOCUMENT_DIR;

@@ -1,10 +1,24 @@
 import { defineChain } from 'viem';
 
+export function parseEip155ChainId(value: unknown): number | undefined {
+  let chainId: number;
+  if (typeof value === 'number') {
+    chainId = value;
+  } else if (typeof value === 'string' && /^0x[\da-f]+$/i.test(value)) {
+    chainId = Number.parseInt(value, 16);
+  } else if (typeof value === 'string' && /^\d+$/.test(value)) {
+    chainId = Number.parseInt(value, 10);
+  } else {
+    return undefined;
+  }
+  return Number.isSafeInteger(chainId) && chainId > 0 ? chainId : undefined;
+}
+
 export const whitechainSepolia = defineChain({
   id: 1874,
   name: 'Whitechain Sepolia',
   nativeCurrency: { name: 'Whitechain Testnet WBT', symbol: 'WBT', decimals: 18 },
-  rpcUrls: { default: { http: ['https://rpc.testnet.whitechain.io'] } },
+  rpcUrls: { default: { http: [process.env.EXPO_PUBLIC_WHITECHAIN_RPC_URL?.trim() || 'https://rpc.testnet.whitechain.io'] } },
   blockExplorers: {
     default: { name: 'Whitechain Explorer', url: 'https://explorer.testnet.whitechain.io' },
   },

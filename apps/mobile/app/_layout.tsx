@@ -13,7 +13,7 @@ export default function RootLayout() {
       <WagmiProvider config={walletRuntime.wagmiConfig}>
         <QueryClientProvider client={walletRuntime.queryClient}>
           <Stack screenOptions={{ headerShown: false }} />
-          <View style={{ position: 'absolute', height: '100%', width: '100%' }}>
+          <View pointerEvents="box-none" style={{ position: 'absolute', height: '100%', width: '100%' }}>
             <AppKit />
           </View>
         </QueryClientProvider>
