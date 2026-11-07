@@ -71,6 +71,9 @@ importers:
       '@react-native-community/netinfo':
         specifier: 12.0.1
         version: 12.0.1(react-native@0.88.1(@babel/core@7.29.13)(@react-native/metro-config@0.88.1(@babel/core@7.29.13)(bufferutil@4.1.0)(utf-8-validate@5.0.10))(@types/react@19.3.0)(bufferutil@4.1.0)(react@19.3.0)(utf-8-validate@5.0.10))(react@19.3.0)
+      '@reown/appkit-core-react-native':
+        specifier: 2.0.6
+        version: 2.0.6(@types/react@19.3.0)(@walletconnect/react-native-compat@2.26.0(22aa0e887b1a8841c952e501507ce03a))(react-native@0.88.1(@babel/core@7.29.13)(@react-native/metro-config@0.88.1(@babel/core@7.29.13)(bufferutil@4.1.0)(utf-8-validate@5.0.10))(@types/react@19.3.0)(bufferutil@4.1.0)(react@19.3.0)(utf-8-validate@5.0.10))(react@19.3.0)
       '@reown/appkit-react-native':
         specifier: ^2.0.6
         version: 2.0.6(3f79ad1210f976f024987650dc383969)

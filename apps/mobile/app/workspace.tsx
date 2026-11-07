@@ -8,8 +8,9 @@ import * as DocumentPicker from 'expo-document-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAppKit } from '@reown/appkit-react-native';
+import { StorageUtil } from '@reown/appkit-core-react-native';
 import { Children, type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Linking, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useAccount, useBalance, useDeployContract, usePublicClient, useReadContract, useSignMessage, useSignTypedData, useSwitchChain, useWriteContract } from 'wagmi';
 import { encodeDeployData, formatEther, isAddress, type Address, type Hash, type Hex } from 'viem';
 import { ApiError, apiBaseUrl, apiRequest, siweOrigin } from '../src/lib/api';
@@ -190,7 +191,19 @@ function Workspace() {
     if (!publicClient) throw new Error('Whitechain RPC is unavailable. Try again when the network is online.');
     if (pendingTransaction?.owner === address.toLowerCase()) throw new Error('Resume your previous transaction before starting another.');
     setOperationStage('Waiting for wallet approval…');
-    const hash = await send();
+    const sendRequest = send();
+    // WalletConnect leaves follow-up requests waiting if the wallet app is
+    // backgrounded after an earlier signature. Queue the request, then bring
+    // the connected wallet back to the foreground for review.
+    const walletLink = await StorageUtil.getWalletConnectDeepLink();
+    if (walletLink?.href) {
+      try {
+        await Linking.openURL(walletLink.href);
+      } catch {
+        // Keep the request alive; the wallet may still receive it over relay.
+      }
+    }
+    const hash = await sendRequest;
     const pendingKey = `creatoradvance:pending:1874:${address.toLowerCase()}`;
     await AsyncStorage.setItem(pendingKey, JSON.stringify({ hash, syncPath }));
     setPendingTransaction({ hash, syncPath, owner: address.toLowerCase() });
